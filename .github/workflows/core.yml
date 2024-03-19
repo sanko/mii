@@ -1,0 +1,83 @@
+---
+jobs:
+  build:
+    name: "${{ inputs.flags || 'Default' }}"
+    runs-on: '${{ inputs.os }}'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - id: cache-perl
+        name: Check perl Cache
+        uses: actions/cache@v4
+        with:
+          key: '${{ inputs.os }}-perl-v${{ inputs.perl }}${{ inputs.flags }}'
+          path: '~/perl5/'
+      - if: "${{ runner.os == 'Windows' }}"
+        name: Init dev env on Windows
+        run: |
+          # skip installing perl if it is already installed.
+          if (!(Test-Path "C:\strawberry\perl\bin")) {
+            choco install strawberryperl
+          }
+          "C:\strawberry\c\bin"         | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\strawberry\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\strawberry\perl\bin"      | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - if: "${{  steps.cache-perl.outputs.cache-hit != 'true' && runner.os == 'Windows' }}"
+        name: 'Build perl ${{ inputs.perl }} directly on Windows'
+        run: |
+          git clone --depth 1 --branch v${{inputs.perl}} https://github.com/Perl/perl5.git
+          pushd perl5\win32
+
+          gmake CCHOME=C:\strawberry\c INST_TOP="C:\Users\runneradmin\perl5\perlbrew\perls\cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}" ^
+                ${{ inputs.flags == '-Dusethreads'      && 'USE_ITHREADS=define    USE_MULTI=define' || '' }} ^
+                ${{ inputs.flags == '-Duselongdouble'   && 'USE_LONG_DOUBLE=define'                  || '' }} ^
+                ${{ inputs.flags == '-Dusequadmath'     && 'USE_QUADMATH=define'                     || '' }} ^
+                -f GNUMakefile -j2 install
+
+            popd
+
+          set PATH=C:\Users\runneradmin\perl5\perlbrew\perls\cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}\bin;%PATH%
+        shell: cmd
+      - if: "${{ steps.cache-perl.outputs.cache-hit != 'true' && runner.os != 'Windows' }}"
+        name: 'Build perl ${{ inputs.perl }} from source'
+        run: |
+          \curl -L https://install.perlbrew.pl | bash
+          source ~/perl5/perlbrew/etc/bashrc
+
+          perlbrew available
+          perlbrew install-cpanm
+
+          perlbrew install --switch --verbose --as cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }} -j 12 --notest --noman ${{ inputs.flags }} perl-${{ inputs.perl }}
+      - name: Install prereqs
+        run: "curl -L https://cpanmin.us | ~/perl5/perlbrew/perls/cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}/bin/perl - --installdeps --notest -v .\n"
+        shell: bash
+      - env:
+          AUTHOR_TESTING: 0
+          AUTOMATED_TESTING: 1
+        id: test
+        name: Run test suite
+        run: |
+          curl -L https://cpanmin.us | ~/perl5/perlbrew/perls/cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}/bin/perl - -v .
+
+          ~/perl5/perlbrew/perls/cache-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}/bin/perl -e 'print $^V' > test-output-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}.txt
+        shell: bash
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4.0.0
+        with:
+          if-no-files-found: error
+          name: 'test-output-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}'
+          path: 'test-output-${{ inputs.os }}-${{ inputs.perl }}${{ inputs.flags }}.txt'
+          retention-days: 1
+name: inputs module
+on:
+  workflow_call:
+    inputs:
+      flags:
+        required: false
+        type: string
+      os:
+        required: true
+        type: string
+      perl:
+        required: true
+        type: string
