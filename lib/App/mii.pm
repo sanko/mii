@@ -27,7 +27,7 @@ class App::mii::Mint::Base : isa(App::mii) {
     field $distribution : param;     # Required
     field $license : param //= 'artistic_2';
     field $vcs : param     //= 'git';
-    field $version : param //= 0.01;
+    field $version : param //= v0.0.1;
     field $path = './' . join '-', split /::/, $distribution;
     ADJUST {
         if ( !builtin::blessed $vcs ) {
