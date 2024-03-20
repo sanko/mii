@@ -11,19 +11,24 @@ use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
 #
 class App::mii v0.0.1 {
-    method log ($msg) { say $msg; }
+    method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
 
     method usage( $msg, $sections //= () ) {
         Pod::Usage::pod2usage( -message => qq[$msg\n], -verbose => 99, -sections => $sections );
     }
+
+    method slurp_config() {
+        JSON::Tiny::decode_json( path('.')->child('mii.conf')->slurp() );
+    }
 };
 
-class App::mii::Mint::Base {
+class App::mii::Mint::Base : isa(App::mii) {
     field $author : param //= ();    # We'll ask VSC as a last resort
     field $distribution : param;     # Required
     field $license : param //= 'artistic_2';
     field $vcs : param     //= 'git';
-    field $path : param    //= '.';
+    field $version : param //= 0.01;
+    field $path = './' . join '-', split /::/, $distribution;
     ADJUST {
         if ( !builtin::blessed $vcs ) {
             my $pkg = {
@@ -36,26 +41,103 @@ class App::mii::Mint::Base {
             $self->log(qq[Unknown VCS type "$vcs"; falling back to App::mii::VCS::Tar]) unless $pkg;
             $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
         }
-        $author //= $vcs->whoami;
-        $author // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
+        $author //= $vcs->whoami // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
         if ( !builtin::blessed $license ) {
             my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key($license);
             exit $self->log(qq[Software::License has no knowledge of "$license"]) unless $pkg;
             $license = $pkg->new( { holder => $author, Program => $distribution } );
         }
         if ( !builtin::blessed $path ) {
-            $path = Path::Tiny::path($path);
+            $path = Path::Tiny::path($path)->realpath;
         }
     }
     method license() {$license}
     method vcs()     {$vcs}
 
-    method spew_config() {
-        $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
-    }
-
     method config() {
         +{ author => $author, distribution => $distribution, license => $license->meta_name, vcs => $vcs->name };
+    }
+
+    method hit_it() {
+        {
+            my @dir  = split /::/, $distribution;
+            my $file = pop @dir;
+            $path->child( 'lib', @dir )->mkdir;
+            my $license_blurb = $license->notice;
+            my $license_url   = $license->url;
+            $license_blurb .= sprintf qq[\nSee the L<LICENSE> file%s.], $license_url ? qq[ or L<$license_url>] : '';
+
+            # TODO: Allow this default .pm to be a template from userdir
+            $path->child( 'lib', @dir, $file . '.pm' )->spew(<<PM);
+package $distribution $version {
+    use v5.38;
+    sub greet (\$whom) { "Hello, \$whom" }
+};
+1;
+
+=encoding utf-8
+
+=head1 NAME
+
+$distribution - Spankin' New Code
+
+=head1 SYNOPSIS
+
+    use $distribution;
+
+=head1 DESCRIPTION
+
+$distribution is brand new, baby!
+
+=head1 LICENSE
+
+$license_blurb
+
+=head1 AUTHOR
+
+$author
+
+=begin stopwords
+
+
+=end stopwords
+
+=cut
+
+PM
+        }
+        $path->child('eg')->mkdir;
+        $path->child('t')->mkdir;
+        $path->child( 't', '00_compile.t' )->spew(<<T);
+use Test2::V0;
+use lib './lib', '../lib';
+use $distribution;
+#
+diag \$${distribution}::VERSION;
+is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
+#
+done_testing;
+T
+        $path->child('LICENSE')->spew( $self->license->fulltext );
+        $path->child('Changes')->spew( <<CHANGELOG );    # %v is non-standard and returns version number
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [{{NEXT:%v}}] - {{NEXT:%Y-%m-%d}}
+
+### Added
+
+- This CHANGELOG file to hopefully serve as an evolving example of a
+  standardized open source project CHANGELOG.
+- See https://keepachangelog.com/en/1.1.0/
+
+CHANGELOG
+
+        # Finally...
+        $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
+        $self->log( 'New project minted in %s', $path->realpath );
+        0;
     }
 }
 
@@ -63,7 +145,9 @@ class App::mii::Mint::Subclass : isa(App::mii::Mint::Base) { }
 
 class App::mii::VCS::Base {
     method whoami()         { () }
+    method init()           {...}
     method add_file($path)  {...}
+    method gather_files()   {...}
     method diff_file($path) {...}
     method diff_repo()      {...}
     method commit($message) {...}
