@@ -5,11 +5,13 @@ App::mii - Internals for mii
 
 # SYNOPSIS
 
-    use App::mii;
+    $ mii help
 
 # DESCRIPTION
 
 App::mii is just for me.
+
+If I forget how to use mii, I could install it and run `mii help` or I could check the POD at the end of `script/mii.pl`
 
 # LICENSE
 

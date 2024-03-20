@@ -134,9 +134,19 @@ All notable changes to this project will be documented in this file.
 
 CHANGELOG
 
+        # TODO: cpanfile
+        # TODO: Build.PL
+        # TODO: builder/$dist.pm        if requested
+        # TODO: .github/workflow/*      in ::Git
+        # TODO: .github/FUNDING.yaml    in ::Git
         # Finally...
         $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
+        my $cwd = Path::Tiny::path('.')->realpath;
+        chdir $path->realpath->stringify;
+        $self->log( $vcs->init() );
+        $self->log( $vcs->add_file('.') );
+        chdir $cwd;
         0;
     }
 }
@@ -165,6 +175,18 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         chomp $me;
         chomp $at if $at;
         $me . ( $at ? qq[ <$at>] : '' );
+    }
+
+    method init () {
+        my $msg = Capture::Tiny::capture_stdout { system qw[git init] };
+        chomp $msg;
+        $msg;
+    }
+
+        method add_file($path)  {
+        my $msg = Capture::Tiny::capture_stdout { system qw[git add], $path };
+        chomp $msg;
+        $msg;
     }
 }
 
@@ -196,7 +218,6 @@ class App::mii::VCS::Tar : isa(App::mii::VCS::Base) {
     method name () {'tar'}
 }
 1;
-__END__
 
 =encoding utf-8
 
@@ -206,11 +227,13 @@ App::mii - Internals for mii
 
 =head1 SYNOPSIS
 
-    use App::mii;
+    $ mii help
 
 =head1 DESCRIPTION
 
 App::mii is just for me.
+
+If I forget how to use mii, I could install it and run C<mii help> or I could check the POD at the end of F<script/mii.pl>
 
 =head1 LICENSE
 
@@ -231,4 +254,3 @@ mii
 =end stopwords
 
 =cut
-
