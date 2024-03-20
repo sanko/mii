@@ -12,24 +12,21 @@ use Software::LicenseUtils;    # not in CORE
 #
 class App::mii v0.0.1 {
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
-
-    method usage( $msg, $sections //= () ) {
-        Pod::Usage::pod2usage( -message => qq[$msg\n], -verbose => 99, -sections => $sections );
-    }
-
-    method slurp_config() {
-        JSON::Tiny::decode_json( path('.')->child('mii.conf')->slurp() );
-    }
-};
-
-class App::mii::Mint::Base : isa(App::mii) {
-    field $author : param //= ();    # We'll ask VSC as a last resort
-    field $distribution : param;     # Required
-    field $license : param //= 'artistic_2';
-    field $vcs : param     //= 'git';
-    field $version : param //= v0.0.1;
-    field $path = './' . join '-', split /::/, $distribution;
+    field $author;
+    field $distribution;       # Required
+    field $license;
+    field $vcs;
+    field $version;
+    field $path;
     ADJUST {
+        my $config = $self->slurp_config;
+        $author       = $config->{author};
+        $distribution = $config->{distribution};
+        $license      = $config->{license};
+        $vcs          = $config->{vcs};
+        $version      = $config->{version};
+        $path         = '.';
+
         if ( !builtin::blessed $vcs ) {
             my $pkg = {
                 git    => 'App::mii::VCS::Git',
@@ -50,22 +47,106 @@ class App::mii::Mint::Base : isa(App::mii) {
         if ( !builtin::blessed $path ) {
             $path = Path::Tiny::path($path)->realpath;
         }
+
+        # TODO: move to ::Dist
+        $self->generate_meta;
+    };
+
+    method usage( $msg, $sections //= () ) {
+        Pod::Usage::pod2usage( -message => qq[$msg\n], -verbose => 99, -sections => $sections );
+    }
+
+    method generate_meta() {
+        my $meta = {
+
+            # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
+            abstract       => '',
+            author         => $author,
+            dynamic_config => 1,
+            generated_by   => sprintf( 'App::mii %s', $App::mii::VERSION ),
+            license        => [ map { $_->meta_name } @$license ],
+        };
+        #~ use Data::Dump;
+        #~ ddx $meta;
+    }
+
+    method slurp_config() {
+        my $dot_conf = Path::Tiny::path('.')->child('mii.conf');
+        exit $self->log('mii.conf not found; to create a new project, try `mii help mint`') unless $dot_conf->is_file;
+        JSON::Tiny::decode_json( $dot_conf->slurp() );
+    }
+};
+
+class App::mii::Mint::Base {
+    field $author : param //= ();    # We'll ask VSC as a last resort
+    field $distribution : param;     # Required
+    field $license : param //= ['artistic_2'];
+    field $vcs : param     //= 'git';
+    field $version : param //= 'v0.0.1';
+    field $path = './' . join '-', split /::/, $distribution;
+    ADJUST {
+        if ( !builtin::blessed $vcs ) {
+            my $pkg = {
+                git    => 'App::mii::VCS::Git',
+                hg     => 'App::mii::VCS::Mercurial',
+                brz    => 'App::mii::VCS::Breezy',
+                fossil => 'App::mii::VCS::Fossil',
+                svn    => 'App::mii::VCS::Subversion'
+            }->{$vcs};
+            $self->log(qq[Unknown VCS type "$vcs"; falling back to App::mii::VCS::Tar]) unless $pkg;
+            $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
+        }
+        $author //= $vcs->whoami // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
+
+        $license = [$license] if ref $license ne 'ARRAY';
+        $license = ['artistic_2'] unless scalar @$license;
+        if ( grep { !builtin::blessed $license } @$license ) {
+            $license = [
+                map {
+                    my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key($_);
+                    exit $self->log( qq[Software::License has no knowledge of "%s"], $_ ) unless $pkg;
+                    $pkg
+                } @$license
+            ];
+            $license = [ map { $_->new( { holder => $author, Program => $distribution } ) } @$license ];
+        }
+        if ( !builtin::blessed $path ) {
+            $path = Path::Tiny::path($path)->realpath;
+        }
     }
     method license() {$license}
     method vcs()     {$vcs}
 
     method config() {
-        +{ author => $author, distribution => $distribution, license => $license->meta_name, vcs => $vcs->name };
+        +{ author => $author, distribution => $distribution, license => [ map { $_->meta_name } @$license ], vcs => $vcs->name };
     }
+    method slurp_config()     { }
+    method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
 
     method hit_it() {
         {
             my @dir  = split /::/, $distribution;
             my $file = pop @dir;
             $path->child( 'lib', @dir )->mkdir;
-            my $license_blurb = $license->notice;
-            my $license_url   = $license->url;
-            $license_blurb .= sprintf qq[\nSee the L<LICENSE> file%s.], $license_url ? qq[ or L<$license_url>] : '';
+            my $license_blurb = qq[=head1 LICENSE\n\n];
+            if ( @$license > 1 ) {
+                $license_blurb .= sprintf "%s is covered by %d licenses.\n\nSee the L<LICENSE> file for full text.\n\n=over\n\n", $distribution,
+                    scalar @$license;
+                for my $l (@$license) {
+                    $license_blurb .= sprintf "=item * %s\n\n", ucfirst $l->name;
+                    my $chunk       = $l->notice;
+                    my $license_url = $l->url;
+                    $license_blurb .= $chunk;
+                    $license_blurb .= $license_url ? qq[\nSee L<$license_url>.\n\n] : '';
+                }
+                $license_blurb .= "=back";
+            }
+            else {
+                my $chunk       = $license->[0]->notice;
+                my $license_url = $license->[0]->url;
+                $license_blurb .= $chunk;
+                $license_blurb .= $license_url ? qq[\nSee L<$license_url>.] : '';
+            }
 
             # TODO: Allow this default .pm to be a template from userdir
             $path->child( 'lib', @dir, $file . '.pm' )->spew(<<PM);
@@ -88,8 +169,6 @@ $distribution - Spankin' New Code
 =head1 DESCRIPTION
 
 $distribution is brand new, baby!
-
-=head1 LICENSE
 
 $license_blurb
 
@@ -118,7 +197,7 @@ is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
 #
 done_testing;
 T
-        $path->child('LICENSE')->spew( $self->license->fulltext );
+        $path->child('LICENSE')->spew( join( '-' x 20 . "\n", map { $_->fulltext } @$license ) );
         $path->child('Changes')->spew( <<CHANGELOG );    # %v is non-standard and returns version number
 # Changelog
 
@@ -139,6 +218,7 @@ CHANGELOG
         # TODO: builder/$dist.pm        if requested
         # TODO: .github/workflow/*      in ::Git
         # TODO: .github/FUNDING.yaml    in ::Git
+        # TODO: META.json               in ::Dist?
         # Finally...
         $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
@@ -183,7 +263,7 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         $msg;
     }
 
-        method add_file($path)  {
+    method add_file($path) {
         my $msg = Capture::Tiny::capture_stdout { system qw[git add], $path };
         chomp $msg;
         $msg;

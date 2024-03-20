@@ -11,19 +11,21 @@ use Getopt::Long;
 use lib '../lib';
 use App::mii;
 
-#~ @ARGV = qw[nefdsaw --license perl_5];
+#~ @ARGV = qw[mint Acme::Anvil --license artistic_2];
 #~ @ARGV = qw[mint Acme::Anvil];
+#~ @ARGV = qw[mint];
 pod2usage( -verbose => 99, -sections => [qw[NAME SYNOPSIS Commands/Commands]], -exitval => 0 ) unless @ARGV;
 my %commands = (
     mint => sub ( $package //= (), @args ) {
-        $package // App::mii->new->usage( 'mii: Minting a new distribution requires a package name.', 'Commands/mint' );
+        $package
+            // pod2usage( -message => 'mii: Minting a new distribution requires a package name.', -verbose => 99, -sections => ['Commands/mint'] );
         Getopt::Long::GetOptionsFromArray(
             \@args,
             'author=s'  => \my $author,
-            'license=s' => \my $license,
+            'license=s' => \my @license,
             verbose     => \my $verbose    # flag
         );
-        exit App::mii::Mint::Base->new( distribution => $package, author => $author, license => $license )->hit_it;
+        exit App::mii::Mint::Base->new( distribution => $package, author => $author, license => \@license )->hit_it;
     },
     help => sub( $subcommand //= () ) {
         pod2usage( -verbose => 99, -sections => [ qw[SYNOPSIS], 'Commands/' . ( $subcommand // 'Commands' ) ], -exitval => 0 );
@@ -73,7 +75,7 @@ Examples:
 =head3 Options
 
     --vcs           your version control system of choice (default is git)
-    --license       your software license of choice (default is artistic_2)
+    --license       your software license(s) of choice (default is artistic_2)
     --builder       your build system of choice
 
 =head2 help

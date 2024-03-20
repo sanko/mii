@@ -38,6 +38,19 @@ subtest live => sub {
 
         #~ like $stdout, qr[requires a package], 'missing package name';
     };
+    subtest '$ mii mint Acme::Anvil --author=John Smith --license=perl_5 --license=artistic_2' => sub {
+        my $outdir = tempdir();
+        my ( $stdout, $stderr, $exit ) = run_mii( $outdir, qw[mint Acme::Anvil], '--author=John Smith', '--license=perl_5', '--license=artistic_2' );
+        is $exit, 0, 'exit ok';
+        diag $stdout;
+        diag $stderr;
+        $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
+        diag $outdir->child( 'Acme-Anvil', 'mii.conf' )->slurp;
+        like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[The Artistic License 2.0],                      'artistic_2 license found';
+        like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[same terms as the Perl 5 programming language], 'perl_5 license found';
+
+        #~ like $stdout, qr[requires a package], 'missing package name';
+    };
     {
         my $outdir = tempdir();
         subtest '$ mii mint Acme::Anvil --license=perl_5 --author=John Smith' => sub {
