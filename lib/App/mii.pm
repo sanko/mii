@@ -1,6 +1,7 @@
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class', 'experimental::builtin';
+use version        qw[];
 use Carp           qw[];
 use Template::Tiny qw[];       # not in CORE
 use JSON::Tiny     qw[];       # not in CORE
@@ -26,7 +27,6 @@ class App::mii v0.0.1 {
         $vcs          = $config->{vcs};
         $version      = $config->{version};
         $path         = '.';
-
         if ( !builtin::blessed $vcs ) {
             my $pkg = {
                 git    => 'App::mii::VCS::Git',
@@ -39,35 +39,72 @@ class App::mii v0.0.1 {
             $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
         }
         $author //= $vcs->whoami // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
-        if ( !builtin::blessed $license ) {
-            my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key($license);
-            exit $self->log(qq[Software::License has no knowledge of "$license"]) unless $pkg;
-            $license = $pkg->new( { holder => $author, Program => $distribution } );
+        $license = [$license] if ref $license ne 'ARRAY';
+        $license = ['artistic_2'] unless scalar @$license;
+        if ( grep { !builtin::blessed $license } @$license ) {
+            $license = [
+                map {
+                    my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key($_);
+                    exit $self->log( qq[Software::License has no knowledge of "%s"], $_ ) unless $pkg;
+                    $pkg
+                } @$license
+            ];
+            $license = [ map { $_->new( { holder => $author, Program => $distribution } ) } @$license ];
         }
         if ( !builtin::blessed $path ) {
             $path = Path::Tiny::path($path)->realpath;
         }
-
-        # TODO: move to ::Dist
-        $self->generate_meta;
     };
+
+    method dist() {
+        $path->child('META.json')->spew( $self->generate_meta );
+    }
 
     method usage( $msg, $sections //= () ) {
         Pod::Usage::pod2usage( -message => qq[$msg\n], -verbose => 99, -sections => $sections );
     }
 
     method generate_meta() {
-        my $meta = {
-
+        {
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
             abstract       => '',
             author         => $author,
             dynamic_config => 1,
             generated_by   => sprintf( 'App::mii %s', $App::mii::VERSION ),
             license        => [ map { $_->meta_name } @$license ],
+            'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
+            name           => sub { join '-', split /::/, $distribution }
+                ->(),
+            release_status => 'stable',    # stable, testing, unstable
+            version        => $version,
+
+            # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
+            description       => '',
+            keywords          => [],
+            no_index          => { file    => [], directory => [], package => [], namespace => [] },
+            optional_features => { feature => { description => '', prereqs => {} } },
+            prereqs           => {
+                runtime => {
+                    requires   => { 'perl'         => '5.006', 'File::Spec' => '0.86', 'JSON' => '2.16' },
+                    recommends => { 'JSON::XS'     => '2.26' },
+                    suggests   => { 'Archive::Tar' => '0' },
+                },
+                build => { requires   => { 'Alien::SDL' => '1.00', } },
+                test  => { recommends => { 'Test::Deep' => '0.10', } }
+            },
+            provides => {
+                'Foo::Bar'       => { file => 'lib/Foo/Bar.pm', version => '0.27_02' },
+                'Foo::Bar::Blah' => { file => 'lib/Foo/Bar/Blah.pm' },
+                'Foo::Bar::Baz'  => { file => 'lib/Foo/Bar/Baz.pm', version => '0.3' },
+            },
+            resources => {
+                homepage   => 'http://sourceforge.net/projects/module-build',
+                license    => ['http://dev.perl.org/licenses/'],
+                bugtracker => { web => 'http://rt.cpan.org/Public/Dist/Display.html?Name=CPAN-Meta', mailto => 'meta-bugs@example.com' },
+                repository => { url => 'git://github.com/dagolden/cpan-meta.git', web => 'http://github.com/dagolden/cpan-meta', type => $vcs->name },
+                x_twitter  => 'http://twitter.com/cpan_linked/'
+            }
         };
-        #~ use Data::Dump;
-        #~ ddx $meta;
     }
 
     method slurp_config() {
@@ -97,7 +134,6 @@ class App::mii::Mint::Base {
             $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
         }
         $author //= $vcs->whoami // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
-
         $license = [$license] if ref $license ne 'ARRAY';
         $license = ['artistic_2'] unless scalar @$license;
         if ( grep { !builtin::blessed $license } @$license ) {
@@ -123,7 +159,7 @@ class App::mii::Mint::Base {
     method slurp_config()     { }
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
 
-    method hit_it() {
+    method mint() {
         {
             my @dir  = split /::/, $distribution;
             my $file = pop @dir;
@@ -215,10 +251,125 @@ CHANGELOG
 
         # TODO: cpanfile
         # TODO: Build.PL
-        # TODO: builder/$dist.pm        if requested
+        $path->child('Build.PL')->spew(<<BUILD_PL);
+#!perl
+use lib '.';
+use builder::mbt;
+builder::mbt::Build_PL();
+BUILD_PL
+        $path->child( 'builder', 'mbt.pm' )->touchpath->spew( <<'BUILDER' );    # TODO: builder/$dist.pm        if requested
+package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
+    use strict;
+    use warnings;
+    use v5.26;
+    $ENV{PERL_JSON_BACKEND} = 'JSON::Tiny';
+    use CPAN::Meta;
+    use ExtUtils::Config 0.003;
+    use ExtUtils::Helpers 0.020 qw/make_executable split_like_shell detildefy/;
+    use ExtUtils::Install qw/pm_to_blib install/;
+    use ExtUtils::InstallPaths 0.002;
+    use File::Find            ();
+    use File::Spec::Functions qw/catfile catdir rel2abs abs2rel splitdir curdir/;
+    use Getopt::Long 2.36     qw/GetOptionsFromArray/;
+    use JSON::Tiny            qw[];                                                 # Not in CORE
+    use Path::Tiny            qw[];                                                 # Not in CORE
+
+    sub get_meta {
+        state $metafile //= Path::Tiny::path('META.json');
+        exit say "No META information provided\n" unless $metafile->is_file;
+        return CPAN::Meta->load_file( $metafile->realpath );
+    }
+
+    sub find {
+        my ( $pattern, $dir ) = @_;
+        my @ret;
+        File::Find::find( sub { push @ret, $File::Find::name if /$pattern/ && -f }, $dir ) if -d $dir;
+        return @ret;
+    }
+
+    sub contains_pod {
+        my ($file) = @_;
+        return unless -T $file;
+        return Path::Tiny::path($file)->slurp =~ /^\=(?:head|pod|item)/m;
+    }
+    my %actions;
+    %actions = (
+        build => sub {
+            my %opt = @_;
+            for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
+                ( my $pm = $pl_file ) =~ s/\.PL$//;
+                system $^X, $pl_file, $pm and die "$pl_file returned $?\n";
+            }
+            my %modules = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pm$/,  'lib' );
+            my %docs    = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pod$/, 'lib' );
+            my %scripts = map { $_ => catfile( 'blib', $_ ) } find( qr/(?:)/,   'script' );
+            my %sdocs   = map { $_ => delete $scripts{$_} } grep {/.pod$/} keys %scripts;
+            my %dist_shared
+                = map { $_ => catfile( qw/blib lib auto share dist/, $opt{meta}->name, abs2rel( $_, 'share' ) ) } find( qr/(?:)/, 'share' );
+            my %module_shared
+                = map { $_ => catfile( qw/blib lib auto share module/, abs2rel( $_, 'module-share' ) ) } find( qr/(?:)/, 'module-share' );
+            pm_to_blib( { %modules, %docs, %scripts, %dist_shared, %module_shared }, path('.')->child(qw[blib lib auto]) );
+            make_executable($_) for values %scripts;
+            path('.')->child(qw[blib arch])->mkdir( { verbose => $opt{verbose} } );
+            return 0;
+        },
+        test => sub {
+            my %opt = @_;
+            $actions{build}->(%opt) if not -d 'blib';
+            require TAP::Harness::Env;
+            my %test_args = (
+                ( verbosity => $opt{verbose} ) x !!exists $opt{verbose},
+                ( jobs  => $opt{jobs} ) x !!exists $opt{jobs},
+                ( color => 1 ) x !!-t STDOUT,
+                lib => [ map { rel2abs( catdir( qw/blib/, $_ ) ) } qw/arch lib/ ],
+            );
+            my $tester = TAP::Harness::Env->create( \%test_args );
+            return $tester->runtests( sort +find( qr/\.t$/, 't' ) )->has_errors;
+        },
+        install => sub {
+            my %opt = @_;
+            $actions{build}->(%opt) if not -d 'blib';
+            install( $opt{install_paths}->install_map, @opt{qw/verbose dry_run uninst/} );
+            return 0;
+        },
+        clean => sub {
+            my %opt = @_;
+            path($_)->remove_tree( { verbose => $opt{verbose} } ) for qw[blib temp Build _build_params MYMETA.yml MYMETA.json];
+            return 0;
+        },
+    );
+
+    sub Build {
+        my $action = @ARGV && $ARGV[0] =~ /\A\w+\z/ ? shift @ARGV : 'build';
+        $actions{$action} // exit say "No such action: $action";
+        my $build_params = Path::Tiny::path('_build_params');
+        my ( $env, $bargv ) = $build_params->is_file ? @{ JSON::Tiny::decode_json( $build_params->slurp ) } : ();
+        my %opt;
+        GetOptionsFromArray( $_, \%opt,
+            qw/install_base=s install_path=s% installdirs=s destdir=s prefix=s config=s% uninst:1 verbose:1 dry_run:1 pureperl-only:1 create_packlist=i jobs=i/
+        ) for grep {defined} $env, $bargv, \@ARGV;
+        $_ = detildefy($_) for grep {defined} @opt{qw/install_base destdir prefix/}, values %{ $opt{install_path} };
+        @opt{ 'config', 'meta' } = ( ExtUtils::Config->new( $opt{config} ), get_meta() );
+        exit $actions{$action}->( %opt, install_paths => ExtUtils::InstallPaths->new( %opt, dist_name => $opt{meta}->name ) );
+    }
+
+    sub Build_PL {
+        my $meta = get_meta();
+        printf "Creating new 'Build' script for '%s' version '%s'\n", $meta->name, $meta->version;
+        Path::Tiny::path('Build')->spew("#!$^X\nuse Module::Build::Tiny;\nBuild();\n");
+        make_executable('Build');
+        my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();
+        Path::Tiny::path('_build_params')->spew( JSON::Tiny::encode_json( [ \@env, \@ARGV ] ) );
+        $meta->save('MYMETA.json');
+    }
+}
+1;
+BUILDER
+
         # TODO: .github/workflow/*      in ::Git
         # TODO: .github/FUNDING.yaml    in ::Git
         # TODO: META.json               in ::Dist?
+        # TODO: cpanfile
         # Finally...
         $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
@@ -227,7 +378,7 @@ CHANGELOG
         $self->log( $vcs->init() );
         $self->log( $vcs->add_file('.') );
         chdir $cwd;
-        0;
+        return 0;
     }
 }
 

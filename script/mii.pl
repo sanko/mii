@@ -14,6 +14,7 @@ use App::mii;
 #~ @ARGV = qw[mint Acme::Anvil --license artistic_2];
 #~ @ARGV = qw[mint Acme::Anvil];
 #~ @ARGV = qw[mint];
+#~ @ARGV = qw[dist];
 pod2usage( -verbose => 99, -sections => [qw[NAME SYNOPSIS Commands/Commands]], -exitval => 0 ) unless @ARGV;
 my %commands = (
     mint => sub ( $package //= (), @args ) {
@@ -25,14 +26,17 @@ my %commands = (
             'license=s' => \my @license,
             verbose     => \my $verbose    # flag
         );
-        exit App::mii::Mint::Base->new( distribution => $package, author => $author, license => \@license )->hit_it;
+        !App::mii::Mint::Base->new( distribution => $package, author => $author, license => \@license )->mint;
     },
     help => sub( $subcommand //= () ) {
         pod2usage( -verbose => 99, -sections => [ qw[SYNOPSIS], 'Commands/' . ( $subcommand // 'Commands' ) ], -exitval => 0 );
     },
-    test    => sub {...},
-    tidy    => sub {...},
-    dist    => sub {...},
+    test => sub {...},
+    tidy => sub {...},
+    dist => sub {
+        chdir 'Acme-Anvil';
+        App::mii->new()->dist();
+    },
     install => sub {...},
     pause   => sub {...},
     version => sub { say 'mii: ' . $App::mii::VERSION . ' - https://github.com/sanko/mii' }

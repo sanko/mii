@@ -32,9 +32,16 @@ subtest live => sub {
         is $exit, 0, 'exit ok';
         diag $stdout;
         diag $stderr;
-        $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
-        diag $outdir->child( 'Acme-Anvil', 'mii.conf' )->slurp;
-        like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[The Artistic License 2.0], 'default license file';
+
+        #~ $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
+        subtest files => sub {
+            ok $outdir->child( 'Acme-Anvil', 'mii.conf' )->is_file, 'mii.conf';
+
+            #~ diag $outdir->child( 'Acme-Anvil', 'mii.conf' )->slurp;
+            ok $outdir->child( 'Acme-Anvil', 'LICENSE' )->is_file, 'LICENSE';
+            like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[The Artistic License 2.0], 'Artistic License 2.0';
+            ok $outdir->child( 'Acme-Anvil', 'Build.PL' )->is_file, 'Build.PL';
+        }
 
         #~ like $stdout, qr[requires a package], 'missing package name';
     };
@@ -42,14 +49,16 @@ subtest live => sub {
         my $outdir = tempdir();
         my ( $stdout, $stderr, $exit ) = run_mii( $outdir, qw[mint Acme::Anvil], '--author=John Smith', '--license=perl_5', '--license=artistic_2' );
         is $exit, 0, 'exit ok';
-        diag $stdout;
-        diag $stderr;
         $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
-        diag $outdir->child( 'Acme-Anvil', 'mii.conf' )->slurp;
-        like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[The Artistic License 2.0],                      'artistic_2 license found';
-        like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[same terms as the Perl 5 programming language], 'perl_5 license found';
+        subtest files => sub {
+            ok $outdir->child( 'Acme-Anvil', 'mii.conf' )->is_file, 'mii.conf';
 
-        #~ like $stdout, qr[requires a package], 'missing package name';
+            my $license = $outdir->child( 'Acme-Anvil', 'LICENSE' );
+            ok $license->is_file, 'LICENSE';
+            like $license->slurp, qr[The Artistic License 2.0],                      'Artistic License 2.0';
+            like $license->slurp, qr[same terms as the Perl 5 programming language], 'Perl 5 license';
+            ok $outdir->child( 'Acme-Anvil', 'Build.PL' )->is_file, 'Build.PL';
+        }
     };
     {
         my $outdir = tempdir();
