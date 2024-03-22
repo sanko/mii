@@ -5,7 +5,8 @@ use Path::Tiny    qw[path tempdir];
 use lib '../lib';
 use App::mii;
 diag 'App::mii ' . $App::mii::VERSION;
-my ($mii_pl) = map { $_->realpath } grep { $_->exists } map { path(qq[$_/script/mii.pl]); } '.', '..';
+my ($mii_pl) = map { $_->realpath } grep { $_->exists } map { path(qq[$_/script/mii.pl]); } '.',
+    '..';
 #
 my $cwd = path('.')->realpath;
 subtest live => sub {
@@ -28,7 +29,8 @@ subtest live => sub {
     };
     subtest '$ mii mint Acme::Anvil --author=John Smith' => sub {
         my $outdir = tempdir();
-        my ( $stdout, $stderr, $exit ) = run_mii( $outdir, qw[mint Acme::Anvil], '--author=John Smith' );
+        my ( $stdout, $stderr, $exit )
+            = run_mii( $outdir, qw[mint Acme::Anvil], '--author=John Smith' );
         is $exit, 0, 'exit ok';
         diag $stdout;
         diag $stderr;
@@ -38,38 +40,64 @@ subtest live => sub {
             ok $outdir->child( 'Acme-Anvil', 'mii.conf' )->is_file, 'mii.conf';
 
             #~ diag $outdir->child( 'Acme-Anvil', 'mii.conf' )->slurp;
-            ok $outdir->child( 'Acme-Anvil', 'LICENSE' )->is_file, 'LICENSE';
-            like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[The Artistic License 2.0], 'Artistic License 2.0';
+            subtest LICENSE => sub {
+                ok $outdir->child( 'Acme-Anvil', 'LICENSE' )->is_file, 'LICENSE';
+                like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp,
+                    qr[The Artistic License 2.0], 'Artistic License 2.0';
+            };
             ok $outdir->child( 'Acme-Anvil', 'Build.PL' )->is_file, 'Build.PL';
         }
 
         #~ like $stdout, qr[requires a package], 'missing package name';
     };
-    subtest '$ mii mint Acme::Anvil --author=John Smith --license=perl_5 --license=artistic_2' => sub {
+    subtest '$ mii mint Acme::Anvil --author=John Smith --license=perl_5 --license=artistic_2' =>
+        sub {
         my $outdir = tempdir();
-        my ( $stdout, $stderr, $exit ) = run_mii( $outdir, qw[mint Acme::Anvil], '--author=John Smith', '--license=perl_5', '--license=artistic_2' );
+        my ( $stdout, $stderr, $exit ) = run_mii(
+            $outdir,               qw[mint Acme::Anvil],
+            '--author=John Smith', '--license=perl_5',
+            '--license=artistic_2'
+        );
         is $exit, 0, 'exit ok';
         $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
         subtest files => sub {
             ok $outdir->child( 'Acme-Anvil', 'mii.conf' )->is_file, 'mii.conf';
-
-            my $license = $outdir->child( 'Acme-Anvil', 'LICENSE' );
-            ok $license->is_file, 'LICENSE';
-            like $license->slurp, qr[The Artistic License 2.0],                      'Artistic License 2.0';
-            like $license->slurp, qr[same terms as the Perl 5 programming language], 'Perl 5 license';
+            subtest LICENSE => sub {
+                my $license = $outdir->child( 'Acme-Anvil', 'LICENSE' );
+                ok $license->is_file, 'LICENSE';
+                like $license->slurp, qr[The Artistic License 2.0], 'Artistic License 2.0';
+                like $license->slurp, qr[same terms as the Perl 5 programming language],
+                    'Perl 5 license';
+            };
             ok $outdir->child( 'Acme-Anvil', 'Build.PL' )->is_file, 'Build.PL';
         }
-    };
+        };
     {
         my $outdir = tempdir();
         subtest '$ mii mint Acme::Anvil --license=perl_5 --author=John Smith' => sub {
-            my ( $stdout, $stderr, $exit ) = run_mii( $outdir, qw[mint Acme::Anvil --license=perl_5], '--author=John Smith' );
+            my ( $stdout, $stderr, $exit )
+                = run_mii( $outdir, qw[mint Acme::Anvil --license=perl_5], '--author=John Smith' );
             is $exit, 0, 'exit ok';
             diag $stdout;
             diag $stderr;
-            $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
-            like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp, qr[same terms as the Perl 5 programming language], 'proper license file';
+            #~ $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
+            like $outdir->child( 'Acme-Anvil', 'LICENSE' )->slurp,
+                qr[same terms as the Perl 5 programming language], 'proper license file';
+            ( $stdout, $stderr, $exit )
+=
+            run_mii( $outdir, qw[dist] );
 
+
+            diag $stdout;
+            diag $stderr;
+
+            #
+            ( $stdout, $stderr, $exit )
+                =  run_mii( $outdir->child('Acme-Anvil'), qw[list] );
+
+diag $stdout;
+diag $stderr;
+diag $exit;
             #~ like $stdout, qr[requires a package], 'missing package name';
         };
         subtest '$ mii list' => sub {
@@ -78,7 +106,7 @@ subtest live => sub {
             #~ is $exit, 0, 'exit ok';
             #~ diag $stdout;
             #~ diag $stderr;
-            $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
+            #~ $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
             ok 1;
 
             #~ like $stdout, qr[requires a package], 'missing package name';

@@ -57,7 +57,8 @@ class App::mii v0.0.1 {
     };
 
     method dist() {
-        $path->child('META.json')->spew( $self->generate_meta );
+        $path->child('META.json')->spew( JSON::Tiny::encode_json ($self->generate_meta) );
+        $vcs->add_file(        $path->child('META.json'));
     }
 
     method usage( $msg, $sections //= () ) {
@@ -112,6 +113,8 @@ class App::mii v0.0.1 {
         exit $self->log('mii.conf not found; to create a new project, try `mii help mint`') unless $dot_conf->is_file;
         JSON::Tiny::decode_json( $dot_conf->slurp() );
     }
+
+    method gather_files() {$vcs->gather_files}
 };
 
 class App::mii::Mint::Base {
@@ -370,6 +373,17 @@ BUILDER
         # TODO: .github/FUNDING.yaml    in ::Git
         # TODO: META.json               in ::Dist?
         # TODO: cpanfile
+        $path->child('cpanfile')->spew(<<'CPAN');
+requires perl => v5.38.0;
+
+on configure =>{};
+on build=>{};
+on test => {
+    requires 'Test2::V0';
+};
+on configure=>{};
+on runtime=>{};
+CPAN
         # Finally...
         $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
@@ -378,7 +392,6 @@ BUILDER
         $self->log( $vcs->init() );
         $self->log( $vcs->add_file('.') );
         chdir $cwd;
-        return 0;
     }
 }
 
@@ -419,6 +432,12 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         chomp $msg;
         $msg;
     }
+
+        method gather_files()   {
+              my $msg = Capture::Tiny::capture_stdout { system qw[git ls-files] };
+split /\R+/, $msg;
+            }
+
 }
 
 class App::mii::VCS::Mercurial : isa(App::mii::VCS::Base) {
