@@ -11,10 +11,11 @@ use Capture::Tiny  qw[];       # not in CORE
 use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
 #
+#
 class App::mii v0.0.1 {
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
     field $author;
-    field $distribution;       # Required
+    field $distribution;    # Required
     field $license;
     field $vcs;
     field $version;
@@ -57,8 +58,31 @@ class App::mii v0.0.1 {
     };
 
     method dist() {
-        $path->child('META.json')->spew( JSON::Tiny::encode_json ($self->generate_meta) );
-        $vcs->add_file(        $path->child('META.json'));
+        my $eval = sprintf q[push @INC, './lib'; require %s; $%s::VERSION], $distribution, $distribution;
+        $version = eval $eval;
+        $path->child('META.json')->spew( JSON::Tiny::encode_json( $self->generate_meta ) );
+        $vcs->add_file( $path->child('META.json') );
+        {
+            #~ TODO: copy all files to tempdir, update version number in Changelog, run Build.PL, etc.
+            #~ $self->run( $^X, 'Build.PL' );
+            #~ $self->run( $^X, './Build' );
+            #~ $self->run( $^X, './Build test' );
+            require Archive::Tar;
+            my $arch = Archive::Tar->new;
+            $arch->add_files( grep { !/mii\.conf/ } $self->gather_files );
+            $_->mode( $_->mode & ~022 ) for $arch->get_files;
+            my $dist = sprintf '%s::%s.tar.gz', $distribution, $version;
+            $dist =~ s[::][-]g;
+            $dist = Path::Tiny::path($dist)->canonpath;
+            $arch->write( $dist, &Archive::Tar::COMPRESS_GZIP() );
+            return -s $dist;
+
+            #~ return $file;
+        }
+    }
+
+    method run( $cmd, @args ) {
+        system $cmd, @args;
     }
 
     method usage( $msg, $sections //= () ) {
@@ -76,14 +100,14 @@ class App::mii v0.0.1 {
             'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
             name           => sub { join '-', split /::/, $distribution }
                 ->(),
-            release_status => 'stable',    # stable, testing, unstable
-            version        => $version,
+            release_status => 'stable',             # stable, testing, unstable
+            version        => $version // v0.0.0,
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
-            description       => '',
+            description       => 'Not yet.',
             keywords          => [],
             no_index          => { file    => [], directory => [], package => [], namespace => [] },
-            optional_features => { feature => { description => '', prereqs => {} } },
+            optional_features => { feature => { description => 'Not yet', prereqs => {} } },
             prereqs           => {
                 runtime => {
                     requires   => { 'perl'         => '5.006', 'File::Spec' => '0.86', 'JSON' => '2.16' },
@@ -113,8 +137,7 @@ class App::mii v0.0.1 {
         exit $self->log('mii.conf not found; to create a new project, try `mii help mint`') unless $dot_conf->is_file;
         JSON::Tiny::decode_json( $dot_conf->slurp() );
     }
-
-    method gather_files() {$vcs->gather_files}
+    method gather_files() { $vcs->gather_files }
 };
 
 class App::mii::Mint::Base {
@@ -224,8 +247,7 @@ $author
 
 PM
         }
-        $path->child('eg')->mkdir;
-        $path->child('t')->mkdir;
+        $path->child($_)->mkdir for qw[builder eg t];
         $path->child( 't', '00_compile.t' )->spew(<<T);
 use Test2::V0;
 use lib './lib', '../lib';
@@ -253,7 +275,17 @@ All notable changes to this project will be documented in this file.
 CHANGELOG
 
         # TODO: cpanfile
-        # TODO: Build.PL
+        $path->child('cpanfile')->spew(<<'CPAN');
+requires perl => v5.38.0;
+
+on configure =>{};
+on build=>{};
+on test => {
+    requires 'Test2::V0';
+};
+on configure=>{};
+on runtime=>{};
+CPAN
         $path->child('Build.PL')->spew(<<BUILD_PL);
 #!perl
 use lib '.';
@@ -265,7 +297,7 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     use strict;
     use warnings;
     use v5.26;
-    $ENV{PERL_JSON_BACKEND} = 'JSON::Tiny';
+    $ENV{PERL_JSON_BACKEND} = 'JSON::PP';
     use CPAN::Meta;
     use ExtUtils::Config 0.003;
     use ExtUtils::Helpers 0.020 qw/make_executable split_like_shell detildefy/;
@@ -371,19 +403,6 @@ BUILDER
 
         # TODO: .github/workflow/*      in ::Git
         # TODO: .github/FUNDING.yaml    in ::Git
-        # TODO: META.json               in ::Dist?
-        # TODO: cpanfile
-        $path->child('cpanfile')->spew(<<'CPAN');
-requires perl => v5.38.0;
-
-on configure =>{};
-on build=>{};
-on test => {
-    requires 'Test2::V0';
-};
-on configure=>{};
-on runtime=>{};
-CPAN
         # Finally...
         $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
@@ -433,11 +452,10 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         $msg;
     }
 
-        method gather_files()   {
-              my $msg = Capture::Tiny::capture_stdout { system qw[git ls-files] };
-split /\R+/, $msg;
-            }
-
+    method gather_files() {
+        my $msg = Capture::Tiny::capture_stdout { system qw[git ls-files] };
+        map { Path::Tiny::path($_)->canonpath } split /\R+/, $msg;
+    }
 }
 
 class App::mii::VCS::Mercurial : isa(App::mii::VCS::Base) {

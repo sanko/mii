@@ -45,10 +45,7 @@ my %commands = (
     },
     test => sub {...},
     tidy => sub {...},
-    dist => sub {
-        chdir 'Acme-Anvil';
-        App::mii->new()->dist();
-    },
+    dist => sub {  App::mii->new()->dist(); },
     install => sub {...},
     pause   => sub {...},
     version => sub { say 'mii: ' . $App::mii::VERSION . ' - https://github.com/sanko/mii' },
