@@ -10,6 +10,7 @@ use Pod::Usage     qw[];
 use Capture::Tiny  qw[];       # not in CORE
 use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
+use Module::Metadata qw[];
 #
 #
 class App::mii v0.0.1 {
@@ -117,11 +118,13 @@ class App::mii v0.0.1 {
                 build => { requires   => { 'Alien::SDL' => '1.00' } },
                 test  => { recommends => { 'Test::Deep' => '0.10' } }
             },
-            provides => {
-                'Foo::Bar'       => { file => 'lib/Foo/Bar.pm', version => '0.27_02' },
-                'Foo::Bar::Blah' => { file => 'lib/Foo/Bar/Blah.pm' },
-                'Foo::Bar::Baz'  => { file => 'lib/Foo/Bar/Baz.pm', version => '0.3' }
-            },
+            provides => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
+
+            #~ {
+            #~ 'Foo::Bar'       => { file => 'lib/Foo/Bar.pm', version => '0.27_02' },
+            #~ 'Foo::Bar::Blah' => { file => 'lib/Foo/Bar/Blah.pm' },
+            #~ 'Foo::Bar::Baz'  => { file => 'lib/Foo/Bar/Baz.pm', version => '0.3' }
+            #~ },
             resources => {
                 homepage   => 'http://sourceforge.net/projects/module-build',
                 license    => [ map { $_->url } @$license ],
@@ -278,13 +281,13 @@ CHANGELOG
         $path->child('cpanfile')->spew(<<'CPAN');
 requires perl => v5.38.0;
 
-on configure =>{};
-on build=>{};
-on test => {
+on configure =>sub{};
+on build=>sub{};
+on test => sub {
     requires 'Test2::V0';
 };
-on configure=>{};
-on runtime=>{};
+on configure=>sub{};
+on runtime=>sub{};
 CPAN
         $path->child('Build.PL')->spew(<<'BUILD_PL');
 #!perl
@@ -401,7 +404,7 @@ BUILDER
         $self->log( 'New project minted in %s', $path->realpath );
         my $cwd = Path::Tiny::path('.')->realpath;
         chdir $path->realpath->stringify;
-        $self->log( $vcs->init() );
+        $self->log( $vcs->init($path) );
         $self->log( $vcs->add_file('.') );
         chdir $cwd;
     }
@@ -411,7 +414,7 @@ class App::mii::Mint::Subclass : isa(App::mii::Mint::Base) { }
 
 class App::mii::VCS::Base {
     method whoami()         { () }
-    method init()           {...}
+    method init($path)      {...}
     method add_file($path)  {...}
     method gather_files()   {...}
     method diff_file($path) {...}
@@ -433,9 +436,37 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         $me . ( $at ? qq[ <$at>] : '' );
     }
 
-    method init () {
+    method init ($path) {
         my $msg = Capture::Tiny::capture_stdout { system qw[git init] };
         chomp $msg;
+        $msg // return;
+
+        #~ https://github.com/github/gitignore/blob/main/Perl.gitignore
+        $path->child('.gitignore')->spew(<<'GIT_IGNORE');
+!Build/
+/META.json
+/MYMETA.*
+*.o
+*.pm.tdy
+*.bs
+*.old
+/*.gz
+
+# Devel::Cover
+cover_db/
+
+# Devel::NYTProf
+nytprof.out
+
+/.build/
+
+_build/
+Build
+Build.bat
+
+/blib/
+/pm_to_blib
+GIT_IGNORE
         $msg;
     }
 

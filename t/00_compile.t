@@ -5,7 +5,7 @@ use Path::Tiny    qw[path tempdir];
 use lib '../lib';
 use App::mii;
 diag 'App::mii ' . $App::mii::VERSION;
-my ($mii_pl) = map { $_->realpath } grep { $_->exists } map { path(qq[$_/script/mii.pl]); } '.', '..';
+my ($mii_pl) = map { $_->realpath } grep { $_->exists } map { path(qq[$_/script/mii]); } '.', '..';
 #
 my $cwd = path('.')->realpath;
 
