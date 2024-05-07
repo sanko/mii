@@ -463,6 +463,7 @@ nytprof.out
 _build/
 Build
 Build.bat
+_build_params
 
 /blib/
 /pm_to_blib
