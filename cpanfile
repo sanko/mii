@@ -7,6 +7,9 @@ requires 'Software::License';
 requires 'Carp';
 requires 'Path::Tiny';
 requires 'Module::Build::Tiny';
+requires 'CPAN::Meta::Prereqs';
+requires 'CPAN::Meta';
+requires 'Module::CPANfile';
 
 on 'test' => sub {
     requires 'Test2::V0';

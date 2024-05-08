@@ -21,7 +21,7 @@ jobs:
         perl:
           - 5.38
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/bsd.yml@main
+    uses: sanko/mii/.github/workflows/cross.yml@main
     with:
       arch: '${{ matrix.os.architecture }}'
       host: '${{ matrix.os.host }}'
@@ -36,12 +36,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flags: '${{ fromJSON(needs.setup.outputs.matrix).flags }}'
+        flags:
+          - ''
+          - -Dusethreads
+          - -Duselongdouble
+          - -Dusequadmath
         os:
           - ubuntu-22.04
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/core.yml@main
+    uses: sanko/mii/.github/workflows/unix.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'
@@ -62,7 +66,7 @@ jobs:
           - macos-latest
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/core.yml@main
+    uses: sanko/mii/.github/workflows/unix.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'
@@ -75,14 +79,35 @@ jobs:
       - linux
     runs-on: ubuntu-22.04
     steps:
-      - name: Do something
-        run: echo "Do something"
       - name: Download test results
         uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: Report test results
-        run: ls -R artifacts
+        run: |
+          # Function to process a directory
+          process_dir() {
+            local dir="$1"
+            # Loop through each element in the directory
+            for file in "$dir"/*; do
+              # Check if it's a directory
+              if [ -d "$file" ]; then
+                # Recursively call process_dir for subdirectories (except .)
+                if [ "$file" != "." ]; then
+                  process_dir "$file"
+                fi
+              # If it's a regular file, print its content
+              elif [ -f "$file" ]; then
+                echo "================> $file <================"
+                cat "$file"
+                echo ""  # Add an empty line between files
+              fi
+            done
+          }
+          # Get the directory path from the first argument (or current directory)
+          dir=${1:-.}
+          # Process the specified directory
+          process_dir "artifacts"
   setup:
     name: Generate Testing Matrix
     outputs:
@@ -92,8 +117,8 @@ jobs:
       - env:
           DATA: |
             {
-              "perl": ["5.38.2"],
-              "flags": [""]
+              "perl":  ["5.38.2"],
+              "flags": ["", "-Dusethreads", "-Duselongdouble", "-Dusequadmath"]
             }
         id: matrix
         run: "jq -rn 'env.DATA | fromjson | @json \"matrix=\\(.)\"' > $GITHUB_OUTPUT\n"
@@ -104,12 +129,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flags: '${{ fromJSON(needs.setup.outputs.matrix).flags }}'
+        exclude:
+          - perl: 5.34.3
+          - flags: -Duselongdouble
+          - flags: -Dusequadmath
+        flags:
+          - -Dusethreads
+          - ''
         os:
           - windows-2022
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/core.yml@main
+    uses: sanko/mii/.github/workflows/win32.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'

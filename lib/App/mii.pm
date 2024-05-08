@@ -11,7 +11,7 @@ use Capture::Tiny  qw[];       # not in CORE
 use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
 use Module::Metadata qw[];
-#
+use Module::CPANfile qw[];
 #
 class App::mii v0.0.1 {
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
@@ -91,6 +91,7 @@ class App::mii v0.0.1 {
     }
 
     method generate_meta() {
+        my $cpanfile = Module::CPANfile->load;
         {
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
             abstract       => '',
@@ -109,22 +110,8 @@ class App::mii v0.0.1 {
             keywords          => [],
             no_index          => { file    => [], directory => [], package => [], namespace => [] },
             optional_features => { feature => { description => 'Not yet', prereqs => {} } },
-            prereqs           => {
-                runtime => {
-                    requires   => { 'perl'         => '5.006', 'File::Spec' => '0.86', 'JSON' => '2.16' },
-                    recommends => { 'JSON::XS'     => '2.26' },
-                    suggests   => { 'Archive::Tar' => '0' }
-                },
-                build => { requires   => { 'Alien::SDL' => '1.00' } },
-                test  => { recommends => { 'Test::Deep' => '0.10' } }
-            },
-            provides => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
-
-            #~ {
-            #~ 'Foo::Bar'       => { file => 'lib/Foo/Bar.pm', version => '0.27_02' },
-            #~ 'Foo::Bar::Blah' => { file => 'lib/Foo/Bar/Blah.pm' },
-            #~ 'Foo::Bar::Baz'  => { file => 'lib/Foo/Bar/Baz.pm', version => '0.3' }
-            #~ },
+            prereqs           => $cpanfile->prereq_specs,
+            provides          => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
             resources => {
                 homepage   => 'http://sourceforge.net/projects/module-build',
                 license    => [ map { $_->url } @$license ],
@@ -387,7 +374,7 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     sub Build_PL {
         my $meta = get_meta();
         printf "Creating new 'Build' script for '%s' version '%s'\n", $meta->name, $meta->version;
-        $cwd->child('Build')->spew( sprintf "#!%s -I%s\nuse %s;\n%s::Build();\n", $^X, $cwd->canonpath, __PACKAGE__, __PACKAGE__ );
+        $cwd->child('Build')->spew( sprintf "#!%s\nuse lib '%s', '.';\nuse %s;\n%s::Build();\n", $^X, $cwd->canonpath, __PACKAGE__, __PACKAGE__ );
         make_executable('Build');
         my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();
         $cwd->child('_build_params')->spew( encode_json( [ \@env, \@ARGV ] ) );
@@ -444,7 +431,6 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         #~ https://github.com/github/gitignore/blob/main/Perl.gitignore
         $path->child('.gitignore')->spew(<<'GIT_IGNORE');
 !Build/
-/META.json
 /MYMETA.*
 *.o
 *.pm.tdy
