@@ -29,11 +29,13 @@ my %commands = (
             \@args,
             'author=s'  => \my $author,
             'license=s' => \my @license,
+            'vcs=s' => \my $vcs,
             verbose     => \my $verbose    # flag
         );
         App::mii::Mint::Base->new(
             distribution => $package,
             author       => $author,
+            vcs => $vcs,
             license      => \@license
         )->mint;
     },
@@ -94,8 +96,17 @@ Examples:
 
 =head3 Options
 
-    --vcs           your version control system of choice (default is git)
+    --vcs           your version control system of choice
+
+                    options:
+                        - git (default)
+                        - hg
+                        - brz
+                        - fossil
+                        - svn
+
     --license       your software license(s) of choice (default is artistic_2)
+
     --builder       your build system of choice
 
 =head2 help
