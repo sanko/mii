@@ -21,8 +21,9 @@ class App::mii v0.0.1 {
     field $vcs;
     field $version;
     field $path;
+    field $config;
     ADJUST {
-        my $config = $self->slurp_config;
+        $config       = $self->slurp_config;
         $author       = $config->{author};
         $distribution = $config->{distribution};
         $license      = $config->{license};
@@ -61,7 +62,7 @@ class App::mii v0.0.1 {
     method dist() {
         my $eval = sprintf q[push @INC, './lib'; require %s; $%s::VERSION], $distribution, $distribution;
         $version = eval $eval;
-        $path->child('META.json')->spew( JSON::Tiny::encode_json( $self->generate_meta ) );
+        $path->child('META.json')->spew( JSON::Tiny::encode_json( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
         {
             #~ TODO: copy all files to tempdir, update version number in Changelog, run Build.PL, etc.
@@ -82,11 +83,11 @@ class App::mii v0.0.1 {
         }
     }
 
-    method run( $cmd, @args ) {
+    method run ( $cmd, @args ) {
         system $cmd, @args;
     }
 
-    method usage( $msg, $sections //= () ) {
+    method usage ( $msg, $sections //= () ) {
         Pod::Usage::pod2usage( -message => qq[$msg\n], -verbose => 99, -sections => $sections );
     }
 
@@ -94,7 +95,7 @@ class App::mii v0.0.1 {
         my $cpanfile = Module::CPANfile->load;
         {
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
-            abstract       => '',
+            abstract       => $config->{abstract},
             author         => $author,
             dynamic_config => 1,
             generated_by   => sprintf( 'App::mii %s', $App::mii::VERSION ),
@@ -102,23 +103,17 @@ class App::mii v0.0.1 {
             'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
             name           => sub { join '-', split /::/, $distribution }
                 ->(),
-            release_status => 'stable',             # stable, testing, unstable
+            release_status => 'stable',             # TODO: stable, testing, unstable
             version        => $version // v0.0.0,
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
-            description       => 'Not yet.',
-            keywords          => [],
-            no_index          => { file    => [], directory => [], package => [], namespace => [] },
-            optional_features => { feature => { description => 'Not yet', prereqs => {} } },
-            prereqs           => $cpanfile->prereq_specs,
-            provides          => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
-            resources => {
-                homepage   => 'http://sourceforge.net/projects/module-build',
-                license    => [ map { $_->url } @$license ],
-                bugtracker => { web => 'http://rt.cpan.org/Public/Dist/Display.html?Name=CPAN-Meta', mailto => 'meta-bugs@example.com' },
-                repository => { url => 'git://github.com/dagolden/cpan-meta.git', web => 'http://github.com/dagolden/cpan-meta', type => $vcs->name },
-                x_twitter  => 'http://twitter.com/cpan_linked/'
-            }
+            ( defined $config->{description} ? ( description => $config->{description} ) : () ),
+            ( defined $config->{keywords}    ? ( keywords    => $config->{keywords} )    : () ),
+            no_index => { file => [], directory => [], package => [], namespace => [] },
+            ( defined $config->{features} ? ( optional_features => $config->{features} ) : () ),
+            prereqs   => $cpanfile->prereq_specs,
+            provides  => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
+            resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } @$license ] }
         };
     }
 
@@ -400,15 +395,15 @@ BUILDER
 class App::mii::Mint::Subclass : isa(App::mii::Mint::Base) { }
 
 class App::mii::VCS::Base {
-    method whoami()         { () }
-    method init($path)      {...}
-    method add_file($path)  {...}
-    method gather_files()   {...}
-    method diff_file($path) {...}
-    method diff_repo()      {...}
-    method commit($message) {...}
-    method tag($name)       {...}
-    method push             {...}
+    method whoami() { () }
+    method init     ($path) {...}
+    method add_file ($path) {...}
+    method gather_files()    {...}
+    method diff_file ($path) {...}
+    method diff_repo()       {...}
+    method commit ($message) {...}
+    method tag    ($name)    {...}
+    method push {...}
 }
 
 class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
@@ -457,7 +452,7 @@ GIT_IGNORE
         $msg;
     }
 
-    method add_file($path) {
+    method add_file ($path) {
         my $msg = Capture::Tiny::capture_stdout { system qw[git add], $path };
         chomp $msg;
         $msg;
@@ -512,15 +507,15 @@ App::mii - Internals for mii
 
 App::mii is just for me.
 
-If I forget how to use mii, I could install it and run C<mii help> or I could check the POD at the end of F<script/mii.pl>
+If I forget how to use mii, I could install it and run C<mii help> or I could check the POD at the end of
+F<script/mii.pl>
 
 =head1 LICENSE
 
 Copyright (C) Sanko Robinson.
 
-This library is free software; you can redistribute it and/or modify it under the terms found in the
-Artistic License 2. Other copyrights, terms, and conditions may apply to data transmitted through
-this module.
+This library is free software; you can redistribute it and/or modify it under the terms found in the Artistic License
+2. Other copyrights, terms, and conditions may apply to data transmitted through this module.
 
 =head1 AUTHOR
 

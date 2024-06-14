@@ -107,6 +107,7 @@ subtest live => sub {
             #~ $outdir->visit( sub { diag $_->realpath }, { recurse => 1 } );
             #~ like $stdout, qr[requires a package], 'missing package name';
         };
+
         # TODO: share
     };
 };

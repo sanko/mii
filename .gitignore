@@ -33,3 +33,5 @@ MYMETA.*
 script/Acme-Anvil*
 script/mii.conf
 t/Acme-Anvil
+
+.tidyall.d/
