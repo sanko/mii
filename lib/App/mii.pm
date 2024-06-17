@@ -10,9 +10,8 @@ use Pod::Usage     qw[];
 use Capture::Tiny  qw[];       # not in CORE
 use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
-use Module::Metadata    qw[];
-use Module::CPANfile    qw[];
-use ExtUtils::MakeMaker qw[];
+use Module::Metadata qw[];
+use Module::CPANfile qw[];
 #
 class App::mii v0.0.1 {
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
@@ -61,13 +60,8 @@ class App::mii v0.0.1 {
     };
 
     method dist() {
-        my $file = MM->_installed_file_for_module($distribution);
-        $file || return;
-        $version = MM->parse_version($file);
-
-        #~ my $eval = sprintf q[push @INC, './lib'; use %s; warn $%s::VERSION], $distribution, $distribution;
-        #~ warn $eval;
-        #~ $version = eval $eval;
+        my $info = Module::Metadata->new_from_module( $distribution, inc => [ $path->child('lib')->stringify ] );
+        $version = $info->version;
         $path->child('META.json')->spew( JSON::Tiny::encode_json( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
         {

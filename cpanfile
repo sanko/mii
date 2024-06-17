@@ -10,7 +10,6 @@ requires 'Module::Build::Tiny';
 requires 'CPAN::Meta::Prereqs';
 requires 'CPAN::Meta';
 requires 'Module::CPANfile';
-requires 'ExtUtils::MakeMaker';
 requires 'Module::Metadata';
 on 'test' => sub {
     requires 'Test2::V0';

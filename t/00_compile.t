@@ -4,6 +4,7 @@ use Capture::Tiny qw[capture];
 use Path::Tiny    qw[path tempdir];
 use lib '../lib';
 use App::mii;
+$|++;
 diag 'App::mii ' . $App::mii::VERSION;
 my ($mii_pl) = map { $_->realpath } grep { $_->exists } map { path(qq[$_/script/mii]); } '.', '..';
 #
