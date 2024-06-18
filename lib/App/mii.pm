@@ -4,7 +4,7 @@ no warnings 'experimental::class', 'experimental::builtin';
 use version        qw[];
 use Carp           qw[];
 use Template::Tiny qw[];       # not in CORE
-use JSON::Tiny     qw[];       # not in CORE
+use JSON::PP       qw[];       # not in CORE
 use Path::Tiny     qw[];       # not in CORE
 use Pod::Usage     qw[];
 use Capture::Tiny  qw[];       # not in CORE
@@ -20,8 +20,9 @@ class App::mii v0.0.1 {
     field $license;
     field $vcs;
     field $version;
-    field $path;
+    field $path = Path::Tiny::path('.')->realpath;
     field $config;
+    my $json = JSON::PP->new->utf8->space_after;
     ADJUST {
         $config       = $self->slurp_config;
         $author       = $config->{author};
@@ -29,7 +30,6 @@ class App::mii v0.0.1 {
         $license      = $config->{license};
         $vcs          = $config->{vcs};
         $version      = $config->{version};
-        $path         = '.';
         if ( !builtin::blessed $vcs ) {
             my $pkg = {
                 git    => 'App::mii::VCS::Git',
@@ -42,6 +42,8 @@ class App::mii v0.0.1 {
             $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
         }
         $author //= $vcs->whoami // exit $self->log(q[Unable to guess author's name. Help me out and use --author]);
+        my $info = Module::Metadata->new_from_module( $distribution, inc => [ $path->child('lib')->stringify ] );
+        $version = $info->version;
         $license = [$license] if ref $license ne 'ARRAY';
         $license = ['artistic_2'] unless scalar @$license;
         if ( grep { !builtin::blessed $license } @$license ) {
@@ -54,15 +56,10 @@ class App::mii v0.0.1 {
             ];
             $license = [ map { $_->new( { holder => $author, Program => $distribution } ) } @$license ];
         }
-        if ( !builtin::blessed $path ) {
-            $path = Path::Tiny::path($path)->realpath;
-        }
     };
 
     method dist() {
-        my $info = Module::Metadata->new_from_module( $distribution, inc => [ $path->child('lib')->stringify ] );
-        $version = $info->version;
-        $path->child('META.json')->spew( JSON::Tiny::encode_json( $self->generate_meta() ) );
+        $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
         {
             #~ TODO: copy all files to tempdir, update version number in Changelog, run Build.PL, etc.
@@ -93,6 +90,9 @@ class App::mii v0.0.1 {
 
     method generate_meta() {
         my $cpanfile = Module::CPANfile->load;
+        my $stable   = !$version->is_alpha;
+        my $provides = $stable ? Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 ) : {};
+        $_->{file} =~ s[\\+][/]g for values %$provides;
         {
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
             abstract       => $config->{abstract},
@@ -103,8 +103,8 @@ class App::mii v0.0.1 {
             'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
             name           => sub { join '-', split /::/, $distribution }
                 ->(),
-            release_status => 'stable',             # TODO: stable, testing, unstable
-            version        => $version // v0.0.0,
+            release_status => $stable ? 'stable' : 'unstable',    # TODO: stable, testing, unstable
+            version        => $version->stringify,
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
             ( defined $config->{description} ? ( description => $config->{description} ) : () ),
@@ -112,7 +112,7 @@ class App::mii v0.0.1 {
             no_index => { file => [], directory => [], package => [], namespace => [] },
             ( defined $config->{features} ? ( optional_features => $config->{features} ) : () ),
             prereqs   => $cpanfile->prereq_specs,
-            provides  => Module::Metadata->provides( dir => $path->child('lib'), version => 2 ),
+            provides  => $provides,                               # blank unless stable
             resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } @$license ] }
         };
     }
@@ -120,7 +120,7 @@ class App::mii v0.0.1 {
     method slurp_config() {
         my $dot_conf = Path::Tiny::path('.')->child('mii.conf');
         exit $self->log('mii.conf not found; to create a new project, try `mii help mint`') unless $dot_conf->is_file;
-        JSON::Tiny::decode_json( $dot_conf->slurp() );
+        $json->decode( $dot_conf->slurp_utf8() );
     }
     method gather_files() { $vcs->gather_files }
 };
@@ -196,7 +196,7 @@ class App::mii::Mint::Base {
             }
 
             # TODO: Allow this default .pm to be a template from userdir
-            $path->child( 'lib', @dir, $file . '.pm' )->spew(<<PM);
+            $path->child( 'lib', @dir, $file . '.pm' )->spew_utf8(<<PM);
 package $distribution $version {
     use v5.38;
     sub greet (\$whom) { "Hello, \$whom" }
@@ -233,7 +233,7 @@ $author
 PM
         }
         $path->child($_)->mkdir for qw[builder eg t];
-        $path->child( 't', '00_compile.t' )->spew(<<T);
+        $path->child( 't', '00_compile.t' )->spew_utf8(<<T);
 use Test2::V0;
 use lib './lib', '../lib';
 use $distribution;
@@ -243,8 +243,8 @@ is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
 #
 done_testing;
 T
-        $path->child('LICENSE')->spew( join( '-' x 20 . "\n", map { $_->fulltext } @$license ) );
-        $path->child('Changes')->spew( <<CHANGELOG );    # %v is non-standard and returns version number
+        $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } @$license ) );
+        $path->child('Changes')->spew_utf8( <<CHANGELOG );    # %v is non-standard and returns version number
 # Changelog for $distribution
 
 All notable changes to this project will be documented in this file.
@@ -260,7 +260,7 @@ All notable changes to this project will be documented in this file.
 CHANGELOG
 
         # TODO: cpanfile
-        $path->child('cpanfile')->spew(<<'CPAN');
+        $path->child('cpanfile')->spew_utf8(<<'CPAN');
 requires perl => v5.38.0;
 
 on configure =>sub{};
@@ -271,13 +271,13 @@ on test => sub {
 on configure=>sub{};
 on runtime=>sub{};
 CPAN
-        $path->child('Build.PL')->spew(<<'BUILD_PL');
+        $path->child('Build.PL')->spew_utf8(<<'BUILD_PL');
 #!perl
 use lib '.';
 use builder::mbt;
 builder::mbt::Build_PL();
 BUILD_PL
-        $path->child( 'builder', 'mbt.pm' )->touchpath->spew( <<'BUILDER' );
+        $path->child( 'builder', 'mbt.pm' )->touchpath->spew_utf8( <<'BUILDER' );
 package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     use v5.26;
     use CPAN::Meta;
@@ -355,7 +355,7 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
         my $action = @ARGV && $ARGV[0] =~ /\A\w+\z/ ? shift @ARGV : 'build';
         $actions{$action} // exit say "No such action: $action";
         my $build_params = path('_build_params');
-        my ( $env, $bargv ) = $build_params->is_file ? @{ decode_json( $build_params->slurp ) } : ();
+        my ( $env, $bargv ) = $build_params->is_file ? @{ decode_json( $build_params->slurp_utf8 ) } : ();
         GetOptionsFromArray(
             $_,
             \my %opt,
@@ -372,7 +372,7 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
         $cwd->child('Build')->spew( sprintf "#!%s\nuse lib '%s', '.';\nuse %s;\n%s::Build();\n", $^X, $cwd->canonpath, __PACKAGE__, __PACKAGE__ );
         make_executable('Build');
         my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();
-        $cwd->child('_build_params')->spew( encode_json( [ \@env, \@ARGV ] ) );
+        $cwd->child('_build_params')->spew_utf8( encode_json( [ \@env, \@ARGV ] ) );
         $meta->save('MYMETA.json');
     }
 }
@@ -382,7 +382,7 @@ BUILDER
         # TODO: .github/workflow/*      in ::Git
         # TODO: .github/FUNDING.yaml    in ::Git
         # Finally...
-        $path->child('mii.conf')->spew( JSON::Tiny::encode_json( $self->config() ) );
+        $path->child('mii.conf')->spew_utf8( JSON::PP->new->utf8->pretty->canonical->encode( $self->config() ) );
         $self->log( 'New project minted in %s', $path->realpath );
         my $cwd = Path::Tiny::path('.')->realpath;
         chdir $path->realpath->stringify;
@@ -424,7 +424,7 @@ class App::mii::VCS::Git : isa(App::mii::VCS::Base) {
         $msg // return;
 
         #~ https://github.com/github/gitignore/blob/main/Perl.gitignore
-        $path->child('.gitignore')->spew(<<'GIT_IGNORE');
+        $path->child('.gitignore')->spew_utf8(<<'GIT_IGNORE');
 !Build/
 /MYMETA.*
 *.o

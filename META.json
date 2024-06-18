@@ -1,1 +1,95 @@
-{"abstract":"A dist builder for me!","author":"Sanko Robinson <sanko@cpan.org>","description":"mii is just for me. mii makes dists the way I'd make dists if I did it by hand.","dynamic_config":1,"generated_by":"App::mii v0.0.1","keywords":["perl","cpan"],"license":["artistic_2"],"meta-spec":{"url":"https:\/\/metacpan.org\/pod\/CPAN::Meta::Spec","version":2},"name":"App-mii","no_index":{"directory":[],"file":[],"namespace":[],"package":[]},"prereqs":{"configure":{"requires":{"Archive::Tar":"0","CPAN::Meta":"0","File::Basename":"0","File::Spec::Functions":"0","File::Temp":"0","File::Which":"0","HTTP::Tiny":"0","Module::Build::Tiny":"0","Path::Tiny":"0"}},"runtime":{"requires":{"CPAN::Meta":"0","CPAN::Meta::Prereqs":"0","Carp":"0","Getopt::Long":"0","JSON::Tiny":"0","Module::Build::Tiny":"0","Module::CPANfile":"0","Module::Metadata":"0","Path::Tiny":"0","Pod::Usage":"0","Software::License":"0","Template::Tiny":"0","perl":"5.038"}},"test":{"requires":{"Capture::Tiny":"0","Test2::V0":"0"}}},"provides":{"App::mii":{"file":"lib\/App\\mii.pm","version":"v0.0.1"},"App::mii::Mint::Base":{"file":"lib\/App\\mii.pm"},"App::mii::VCS::Base":{"file":"lib\/App\\mii.pm"},"builder::mbt":{"file":"lib\/App\\mii.pm","version":"v0.0.1"}},"release_status":"stable","resources":{"bugtracker":{"web":"https:\/\/github.com\/sanko\/mii\/issues"},"homepage":"https:\/\/github.com\/sanko\/mii","license":["http:\/\/www.perlfoundation.org\/artistic_license_2_0"],"repository":{"type":"git","url":"git:\/\/github.com\/sanko\/mii.git","web":"https:\/\/github.com\/sanko\/mii"}},"version":"v0.0.1"}
+{
+   "abstract" : "A dist builder for me!",
+   "author" : "Sanko Robinson <sanko@cpan.org>",
+   "description" : "mii is just for me. mii makes dists the way I'd make dists if I did it by hand.",
+   "dynamic_config" : 1,
+   "generated_by" : "App::mii v0.0.1",
+   "keywords" : [
+      "perl",
+      "cpan"
+   ],
+   "license" : [
+      "artistic_2"
+   ],
+   "meta-spec" : {
+      "url" : "https://metacpan.org/pod/CPAN::Meta::Spec",
+      "version" : 2
+   },
+   "name" : "App-mii",
+   "no_index" : {
+      "directory" : [],
+      "file" : [],
+      "namespace" : [],
+      "package" : []
+   },
+   "prereqs" : {
+      "configure" : {
+         "requires" : {
+            "Archive::Tar" : "0",
+            "CPAN::Meta" : "0",
+            "File::Basename" : "0",
+            "File::Spec::Functions" : "0",
+            "File::Temp" : "0",
+            "File::Which" : "0",
+            "HTTP::Tiny" : "0",
+            "Module::Build::Tiny" : "0",
+            "Path::Tiny" : "0"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "CPAN::Meta" : "0",
+            "CPAN::Meta::Prereqs" : "0",
+            "Carp" : "0",
+            "Getopt::Long" : "0",
+            "JSON::Tiny" : "0",
+            "Module::Build::Tiny" : "0",
+            "Module::CPANfile" : "0",
+            "Module::Metadata" : "0",
+            "Path::Tiny" : "0",
+            "Pod::Usage" : "0",
+            "Software::License" : "0",
+            "Template::Tiny" : "0",
+            "perl" : "5.038"
+         }
+      },
+      "test" : {
+         "requires" : {
+            "Capture::Tiny" : "0",
+            "Test2::V0" : "0"
+         }
+      }
+   },
+   "provides" : {
+      "App::mii" : {
+         "file" : "lib/App/mii.pm",
+         "version" : "v0.0.1"
+      },
+      "App::mii::Mint::Base" : {
+         "file" : "lib/App/mii.pm"
+      },
+      "App::mii::VCS::Base" : {
+         "file" : "lib/App/mii.pm"
+      },
+      "builder::mbt" : {
+         "file" : "lib/App/mii.pm",
+         "version" : "v0.0.1"
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/sanko/mii/issues"
+      },
+      "homepage" : "https://github.com/sanko/mii",
+      "license" : [
+         "http://www.perlfoundation.org/artistic_license_2_0"
+      ],
+      "repository" : {
+         "type" : "git",
+         "url" : "git://github.com/sanko/mii.git",
+         "web" : "https://github.com/sanko/mii"
+      }
+   },
+   "version" : "v0.0.1"
+}
