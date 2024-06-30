@@ -62,6 +62,14 @@ class App::mii v0.0.1 {
         $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
         {
+            my @dir        = split /::/, $distribution;
+            my $file       = pop @dir;
+            my $readme_src = $path->child( $config->{readme_from} // ( 'lib', @dir, $file . '.pod' ) );
+            $readme_src = $path->child( 'lib', $distribution . '.pm' ) unless $readme_src->exists;
+            $path->child('README.md')->spew_utf8( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown )
+                if $readme_src->exists;
+        }
+        {
             #~ TODO: copy all files to tempdir, update version number in Changelog, run Build.PL, etc.
             #~ $self->run( $^X, 'Build.PL' );
             #~ $self->run( $^X, './Build' );
@@ -491,40 +499,28 @@ class App::mii::VCS::Subversion : isa(App::mii::VCS::Base) {
 class App::mii::VCS::Tar : isa(App::mii::VCS::Base) {
     method name () {'tar'}
 }
+
+package App::mii::Markdown v0.0.1 {    # based on Pod::Markdown::Github
+    use strict;
+    use warnings;
+    use parent 'Pod::Markdown';
+
+    sub syntax {
+        my ( $self, $paragraph ) = @_;
+        return ( $paragraph =~ /(\b(sub|my|use|shift)\b|\$self|\=\>|\$_|\@_)/ ) ? 'perl' : '';
+
+        # TODO: add C, C++, D, Fortran, etc. for Affix
+    }
+
+    sub _indent_verbatim {
+        my ( $self, $paragraph ) = @_;
+        $paragraph = $self->SUPER::_indent_verbatim($paragraph);
+
+        # Remove the leading 4 spaces because we'll escape via ```language
+        $paragraph = join "\n", map { s/^\s{4}//; $_ } split /\n/, $paragraph;
+
+        # Enclose the paragraph in ``` and specify the language
+        return sprintf( "```%s\n%s\n```", $self->syntax($paragraph), $paragraph );
+    }
+}
 1;
-
-=encoding utf-8
-
-=head1 NAME
-
-App::mii - Internals for mii
-
-=head1 SYNOPSIS
-
-    $ mii help
-
-=head1 DESCRIPTION
-
-App::mii is just for me.
-
-If I forget how to use mii, I could install it and run C<mii help> or I could check the POD at the end of
-F<script/mii.pl>
-
-=head1 LICENSE
-
-Copyright (C) Sanko Robinson.
-
-This library is free software; you can redistribute it and/or modify it under the terms found in the Artistic License
-2. Other copyrights, terms, and conditions may apply to data transmitted through this module.
-
-=head1 AUTHOR
-
-Sanko Robinson E<lt>sanko@cpan.orgE<gt>
-
-=begin stopwords
-
-mii
-
-=end stopwords
-
-=cut

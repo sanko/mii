@@ -11,6 +11,7 @@ requires 'CPAN::Meta::Prereqs';
 requires 'CPAN::Meta';
 requires 'Module::CPANfile';
 requires 'Module::Metadata';
+requires 'Pod::Markdown';
 on 'test' => sub {
     requires 'Test2::V0';
     requires 'Capture::Tiny';

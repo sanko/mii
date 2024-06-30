@@ -47,6 +47,7 @@
             "Module::CPANfile" : "0",
             "Module::Metadata" : "0",
             "Path::Tiny" : "0",
+            "Pod::Markdown" : "0",
             "Pod::Usage" : "0",
             "Software::License" : "0",
             "Template::Tiny" : "0",
@@ -62,6 +63,10 @@
    },
    "provides" : {
       "App::mii" : {
+         "file" : "lib/App/mii.pm",
+         "version" : "v0.0.1"
+      },
+      "App::mii::Markdown" : {
          "file" : "lib/App/mii.pm",
          "version" : "v0.0.1"
       },
