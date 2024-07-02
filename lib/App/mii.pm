@@ -59,6 +59,7 @@ class App::mii v0.0.1 {
     };
 
     method dist() {
+        eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
         $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
         {

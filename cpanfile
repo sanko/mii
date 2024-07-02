@@ -12,6 +12,7 @@ requires 'CPAN::Meta';
 requires 'Module::CPANfile';
 requires 'Module::Metadata';
 requires 'Pod::Markdown';
+recommends 'Test::Spellunker';
 on 'test' => sub {
     requires 'Test2::V0';
     requires 'Capture::Tiny';

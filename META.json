@@ -37,6 +37,9 @@
          }
       },
       "runtime" : {
+         "recommends" : {
+            "Test::Spellunker" : "0"
+         },
          "requires" : {
             "CPAN::Meta" : "0",
             "CPAN::Meta::Prereqs" : "0",
