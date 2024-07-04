@@ -62,7 +62,11 @@ class App::mii v0.0.1 {
         eval system 'tidyall -a';
         system $^X, $path->child('Build.PL')->stringify;
         system $^X, $path->child('Build')->stringify;
+
+        #~ TODO: update version number in Changelog, run Build.PL, etc.
         eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
+
+        # TODO: Also spell check changelog
         system $^X, $path->child('Build')->stringify, 'test';
         $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
@@ -75,10 +79,6 @@ class App::mii v0.0.1 {
                 if $readme_src->exists;
         }
         {
-            #~ TODO: copy all files to tempdir, update version number in Changelog, run Build.PL, etc.
-            #~ $self->run( $^X, 'Build.PL' );
-            #~ $self->run( $^X, './Build' );
-            #~ $self->run( $^X, './Build test' );
             require Archive::Tar;
             my $arch = Archive::Tar->new;
             $arch->add_files( grep { !/mii\.conf/ } $self->gather_files );
@@ -88,8 +88,6 @@ class App::mii v0.0.1 {
             $dist = Path::Tiny::path($dist)->canonpath;
             $arch->write( $dist, &Archive::Tar::COMPRESS_GZIP() );
             return -s $dist;
-
-            #~ return $file;
         }
     }
 
@@ -257,7 +255,7 @@ is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
 done_testing;
 T
         $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } @$license ) );
-        $path->child('Changes')->spew_utf8( <<CHANGELOG );    # %v is non-standard and returns version number
+        $path->child('Changes.md')->spew_utf8( <<CHANGELOG );    # %v is non-standard and returns version number
 # Changelog for $distribution
 
 All notable changes to this project will be documented in this file.
@@ -271,18 +269,14 @@ All notable changes to this project will be documented in this file.
 - See https://keepachangelog.com/en/1.1.0/
 
 CHANGELOG
-
-        # TODO: cpanfile
         $path->child('cpanfile')->spew_utf8(<<'CPAN');
 requires perl => v5.38.0;
 
-on configure =>sub{};
-on build=>sub{};
-on test => sub {
+on configure => sub { };
+on build     => sub { };
+on test      => sub {
     requires 'Test2::V0';
 };
-on configure=>sub{};
-on runtime=>sub{};
 CPAN
         $path->child('Build.PL')->spew_utf8(<<'BUILD_PL');
 #!perl
@@ -295,8 +289,8 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     use v5.26;
     use CPAN::Meta;
     use ExtUtils::Config 0.003;
-    use ExtUtils::Helpers 0.020 qw/make_executable split_like_shell detildefy/;
-    use ExtUtils::Install qw/pm_to_blib install/;
+    use ExtUtils::Helpers 0.020 qw[make_executable split_like_shell detildefy];
+    use ExtUtils::Install qw    [/pm_to_blib install];
     use ExtUtils::InstallPaths 0.002;
     use File::Spec::Functions qw/catfile catdir rel2abs abs2rel/;
     use Getopt::Long 2.36     qw/GetOptionsFromArray/;
@@ -512,7 +506,9 @@ package App::mii::Markdown v0.0.1 {    # based on Pod::Markdown::Github
 
     sub syntax {
         my ( $self, $paragraph ) = @_;
-        return ( $paragraph =~ /(\b(sub|my|use|shift)\b|\$self|\=\>|\$_|\@_)/ ) ? 'perl' : '';
+
+        #~ https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-and-highlighting-code-blocks
+        return ( ( $paragraph =~ /(\b(sub|my|use|shift)\b|\$self|\=\>|\$_|\@_)/ ) ? 'perl' : ( $paragraph =~ /#include/ ) ? 'cpp' : '' );
 
         # TODO: add C, C++, D, Fortran, etc. for Affix
     }
