@@ -80,11 +80,32 @@ mii [command] [options]
 
 =head2 Commands
 
+    dist                            build a new dist
     mint Module::Name [options]     mint a new distribution
     help [command]                  brief help message
     version                         display version information
 
 For more on each command, try 'mii help mint' or 'mii help help'
+
+=head2 dist
+
+Build a dist ready for PAUSE.
+
+Examples:
+
+    mii dist
+
+    mii dist --no-test
+
+    mii dist --verbose
+
+    mii dist --version 1.2
+
+=head3 Options
+
+    --no-test       the test suite will not be executed before producing the dist
+    --verbose       be noisy
+    --version       override the automatic version number gathering
 
 =head2 mint
 

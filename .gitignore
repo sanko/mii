@@ -35,3 +35,5 @@ script/mii.conf
 t/Acme-Anvil
 
 .tidyall.d/
+.vscode/*
+launch.json

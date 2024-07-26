@@ -70,6 +70,11 @@ class App::mii v0.0.1 {
         system $^X, $path->child('Build')->stringify, 'test';
         $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
         $vcs->add_file( $path->child('META.json') );
+        
+        # TODO: slurp changelog, replace {{VERSION}} tags
+        # Support date formats, etc. in {{DATE:%Y-%m-%d}} tags
+        # Default DATE format is %Y-%m-%d
+       
         {
             my @dir        = split /::/, $distribution;
             my $file       = pop @dir;
@@ -260,7 +265,7 @@ T
 
 All notable changes to this project will be documented in this file.
 
-## [{{NEXT:%v}}] - {{NEXT:%Y-%m-%d}}
+## [{{VERSION}}] - {{DATE:%Y-%m-%d}}
 
 ### Added
 
@@ -290,10 +295,10 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     use CPAN::Meta;
     use ExtUtils::Config 0.003;
     use ExtUtils::Helpers 0.020 qw[make_executable split_like_shell detildefy];
-    use ExtUtils::Install qw    [/pm_to_blib install];
+    use ExtUtils::Install       qw[pm_to_blib install];
     use ExtUtils::InstallPaths 0.002;
-    use File::Spec::Functions qw/catfile catdir rel2abs abs2rel/;
-    use Getopt::Long 2.36     qw/GetOptionsFromArray/;
+    use File::Spec::Functions qw[catfile catdir rel2abs abs2rel];
+    use Getopt::Long 2.36     qw[GetOptionsFromArray];
     use JSON::Tiny            qw[encode_json decode_json];          # Not in CORE
     use Path::Tiny            qw[path];                             # Not in CORE
     my $cwd = path('.')->realpath;
