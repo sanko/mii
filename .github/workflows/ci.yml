@@ -18,10 +18,20 @@ jobs:
             name: freebsd
             pkg: pkg install -y
             version: 13.2
+          - architecture: x86-64
+            host: ubuntu-latest
+            name: freebsd
+            pkg: pkg install -y
+            version: 14.1
+          - architecture: arm64
+            host: ubuntu-latest
+            name: freebsd
+            pkg: pkg install -y
+            version: 14.1
         perl:
-          - 5.38
-      max-parallel: 25
-    uses: sanko/mii/.github/workflows/cross.yml@main
+          - 5.40
+      max-parallel: 5
+    uses: sanko/actions/.github/workflows/affix-cross.yml@main
     with:
       arch: '${{ matrix.os.architecture }}'
       host: '${{ matrix.os.host }}'
@@ -45,7 +55,7 @@ jobs:
           - ubuntu-22.04
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/unix.yml@main
+    uses: sanko/actions/.github/workflows/affix-unix.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'
@@ -66,7 +76,7 @@ jobs:
           - macos-latest
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/unix.yml@main
+    uses: sanko/actions/.github/workflows/affix-unix.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'
@@ -117,7 +127,7 @@ jobs:
       - env:
           DATA: |
             {
-              "perl":  ["5.38.2"],
+              "perl":  ["5.40.0"],
               "flags": ["", "-Dusethreads", "-Duselongdouble", "-Dusequadmath"]
             }
         id: matrix
@@ -130,7 +140,6 @@ jobs:
       fail-fast: false
       matrix:
         exclude:
-          - perl: 5.34.3
           - flags: -Duselongdouble
           - flags: -Dusequadmath
         flags:
@@ -140,7 +149,7 @@ jobs:
           - windows-2022
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
-    uses: sanko/mii/.github/workflows/win32.yml@main
+    uses: sanko/actions/.github/workflows/affix-win32.yml@main
     with:
       flags: '${{ matrix.flags }}'
       os: '${{ matrix.os }}'
