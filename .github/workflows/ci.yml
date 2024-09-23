@@ -1,44 +1,5 @@
 ---
 jobs:
-  etc:
-    name: 'Other Platforms/v${{matrix.perl}}'
-    needs:
-      - setup
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - architecture: x86-64
-            host: ubuntu-20.04
-            name: freebsd
-            pkg: pkg install -y
-            version: 13.2
-          - architecture: arm64
-            host: ubuntu-20.04
-            name: freebsd
-            pkg: pkg install -y
-            version: 13.2
-          - architecture: x86-64
-            host: ubuntu-latest
-            name: freebsd
-            pkg: pkg install -y
-            version: 14.1
-          - architecture: arm64
-            host: ubuntu-latest
-            name: freebsd
-            pkg: pkg install -y
-            version: 14.1
-        perl:
-          - 5.40
-      max-parallel: 5
-    uses: sanko/actions/.github/workflows/affix-cross.yml@main
-    with:
-      arch: '${{ matrix.os.architecture }}'
-      host: '${{ matrix.os.host }}'
-      os: '${{ matrix.os.name }}'
-      perl: '${{ matrix.perl }}'
-      pkg: '${{ matrix.os.pkg }}'
-      version: '${{ matrix.os.version }}'
   linux:
     name: 'Linux/v${{matrix.perl}}'
     needs:
