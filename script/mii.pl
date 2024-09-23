@@ -6,7 +6,7 @@
 # mii install
 # mii pause
 #
-use v5.38;
+use v5.40;
 use Pod::Usage;
 use Getopt::Long;
 use lib '../lib';
@@ -16,39 +16,26 @@ use App::mii;
 #~ @ARGV = qw[mint Acme::Anvil];
 #~ @ARGV = qw[mint];
 #~ @ARGV = qw[dist];
-pod2usage( -verbose => 99, -sections => [qw[NAME SYNOPSIS Commands/Commands]], -exitval => 0 )
-    unless @ARGV;
+pod2usage( -verbose => 99, -sections => [qw[NAME SYNOPSIS Commands/Commands]], -exitval => 0 ) unless @ARGV;
 my %commands = (
     mint => sub ( $package //= (), @args ) {
-        $package // pod2usage(
-            -message  => 'mii: Minting a new distribution requires a package name.',
-            -verbose  => 99,
-            -sections => ['Commands/mint']
-        );
+        $package
+            // pod2usage( -message => 'mii: Minting a new distribution requires a package name.', -verbose => 99, -sections => ['Commands/mint'] );
         Getopt::Long::GetOptionsFromArray(
             \@args,
             'author=s'  => \my $author,
             'license=s' => \my @license,
-            'vcs=s' => \my $vcs,
+            'vcs=s'     => \my $vcs,
             verbose     => \my $verbose    # flag
         );
-        App::mii::Mint::Base->new(
-            distribution => $package,
-            author       => $author,
-            vcs => $vcs,
-            license      => \@license
-        )->mint;
+        App::mii::Mint::Base->new( distribution => $package, author => $author, vcs => $vcs, license => \@license )->mint;
     },
     help => sub( $subcommand //= () ) {
-        pod2usage(
-            -verbose  => 99,
-            -sections => [ qw[SYNOPSIS], 'Commands/' . ( $subcommand // 'Commands' ) ],
-            -exitval  => 0
-        );
+        pod2usage( -verbose => 99, -sections => [ qw[SYNOPSIS], 'Commands/' . ( $subcommand // 'Commands' ) ], -exitval => 0 );
     },
-    test => sub {...},
-    tidy => sub {...},
-    dist => sub {  App::mii->new()->dist(); },
+    test    => sub {...},
+    tidy    => sub {...},
+    dist    => sub { App::mii->new()->dist(); },
     install => sub {...},
     pause   => sub {...},
     version => sub { say 'mii: ' . $App::mii::VERSION . ' - https://github.com/sanko/mii' },
@@ -57,7 +44,6 @@ my %commands = (
     list => sub {
         say $_ for App::mii->new()->gather_files();
     }
-
 );
 my $command = shift @ARGV;
 #

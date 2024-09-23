@@ -1,3 +1,6 @@
+package App::mii::Templates {
+    use v5.40;
+    sub builder_pm() { <<'BUILDER'; }
 package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
     use v5.40;
     use CPAN::Meta;
@@ -94,6 +97,89 @@ package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
         my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();
         $cwd->child('_build_params')->spew_utf8( encode_json( [ \@env, \@ARGV ] ) );
         $meta->save('MYMETA.json');
+    }
+}
+1;
+BUILDER
+    sub changes_md() {<<'CHANGES'}    # %v is non-standard and returns version number
+# Changelog for $distribution
+
+All notable changes to this project will be documented in this file.
+
+## [{{NEXT:%v}}] - {{NEXT:%Y-%m-%d}}
+
+### Added
+
+- This CHANGELOG file to hopefully serve as an evolving example of a
+  standardized open source project CHANGELOG.
+- See https://keepachangelog.com/en/1.1.0/
+
+CHANGES
+    sub cpanfile() { <<'CPAN' }
+requires perl => v5.38.0;
+
+on configure => sub { };
+on build     => sub { };
+on test      => sub {
+    requires 'Test2::V0';
+};
+CPAN
+    sub lib_blah_pm( $distribution, $version, $author, $license_blurb ) { <<PM; }
+package $distribution $version {
+    use v5.40;
+    sub greet (\$whom) { "Hello, \$whom" }
+};
+1;
+
+=encoding utf-8
+
+=head1 NAME
+
+$distribution - Spankin' New Code
+
+=head1 SYNOPSIS
+
+    use $distribution;
+
+=head1 DESCRIPTION
+
+$distribution is brand new, baby!
+
+$license_blurb
+
+=head1 AUTHOR
+
+$author
+
+=begin stopwords
+
+
+=end stopwords
+
+=cut
+
+PM
+
+    sub t_00_comple_t($package) {
+        <<'T';
+use Test2::V0;
+use lib './lib', '../lib';
+use $distribution;
+#
+diag \$${distribution}::VERSION;
+is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
+#
+done_testing;
+T
+    }
+
+    sub build_pl() {
+        <<'BUILD_PL';
+#!perl
+use lib '.';
+use builder::mbt;
+builder::mbt::Build_PL();
+BUILD_PL
     }
 }
 1;

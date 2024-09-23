@@ -70,17 +70,20 @@
          "version" : "v0.0.1"
       },
       "App::mii::Markdown" : {
-         "file" : "lib/App/mii.pm",
+         "file" : "lib/App/mii/Markdown.pm",
          "version" : "v0.0.1"
       },
       "App::mii::Mint::Base" : {
          "file" : "lib/App/mii.pm"
       },
+      "App::mii::Templates" : {
+         "file" : "lib/App/mii/Templates.pm"
+      },
       "App::mii::VCS::Base" : {
          "file" : "lib/App/mii.pm"
       },
       "builder::mbt" : {
-         "file" : "lib/App/mii.pm",
+         "file" : "lib/App/mii/Templates.pm",
          "version" : "v0.0.1"
       }
    },

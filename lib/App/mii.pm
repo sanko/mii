@@ -1,4 +1,4 @@
-use v5.38;
+use v5.40;
 use feature 'class';
 no warnings 'experimental::class', 'experimental::builtin';
 use version        qw[];
@@ -13,15 +13,18 @@ use Software::LicenseUtils;    # not in CORE
 use Module::Metadata qw[];
 use Module::CPANfile qw[];
 #
+use App::mii::Markdown;
+use App::mii::Templates;
+#
 class App::mii v0.0.1 {
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
-    field $author;
-    field $distribution;    # Required
-    field $license;
-    field $vcs;
-    field $version;
-    field $path = Path::Tiny::path('.')->realpath;
-    field $config;
+    field $author : param : reader //= ();
+    field $distribution : param : reader;    # Required
+    field $license : param : reader //= 'artistic_2';
+    field $vcs : reader = 'git';
+    field $version : param : reader;
+    field $path : param : reader //= Path::Tiny::path('.')->realpath;
+    field $config : param : reader;
     my $json = JSON::PP->new->utf8->space_after;
     ADJUST {
         $config       = $self->slurp_config;
@@ -32,11 +35,12 @@ class App::mii v0.0.1 {
         $version      = $config->{version};
         if ( !builtin::blessed $vcs ) {
             my $pkg = {
-                git    => 'App::mii::VCS::Git',
-                hg     => 'App::mii::VCS::Mercurial',
-                brz    => 'App::mii::VCS::Breezy',
-                fossil => 'App::mii::VCS::Fossil',
-                svn    => 'App::mii::VCS::Subversion'
+                git => 'App::mii::VCS::Git',
+
+                #~ hg     => 'App::mii::VCS::Mercurial',
+                #~ brz    => 'App::mii::VCS::Breezy',
+                #~ fossil => 'App::mii::VCS::Fossil',
+                #~ svn    => 'App::mii::VCS::Subversion'
             }->{$vcs};
             $self->log(qq[Unknown VCS type "$vcs"; falling back to App::mii::VCS::Tar]) unless $pkg;
             $vcs = ( $pkg // 'App::mii::VCS::Tar' )->new();
@@ -207,184 +211,16 @@ class App::mii::Mint::Base {
             }
 
             # TODO: Allow this default .pm to be a template from userdir
-            $path->child( 'lib', @dir, $file . '.pm' )->spew_utf8(<<PM);
-package $distribution $version {
-    use v5.38;
-    sub greet (\$whom) { "Hello, \$whom" }
-};
-1;
-
-=encoding utf-8
-
-=head1 NAME
-
-$distribution - Spankin' New Code
-
-=head1 SYNOPSIS
-
-    use $distribution;
-
-=head1 DESCRIPTION
-
-$distribution is brand new, baby!
-
-$license_blurb
-
-=head1 AUTHOR
-
-$author
-
-=begin stopwords
-
-
-=end stopwords
-
-=cut
-
-PM
+            $path->child( 'lib', @dir, $file . '.pm' )
+                ->spew_utf8( App::mii::Templates::lib_blah_pm( $distribution, $version, $author, $license_blurb ) );
         }
         $path->child($_)->mkdir for qw[builder eg t];
-        $path->child( 't', '00_compile.t' )->spew_utf8(<<T);
-use Test2::V0;
-use lib './lib', '../lib';
-use $distribution;
-#
-diag \$${distribution}::VERSION;
-is ${distribution}::greet('World'), 'Hello, World', 'proper greeting';
-#
-done_testing;
-T
+        $path->child( 't', '00_compile.t' )->spew_utf8( App::mii::Templates::t_00_comple_t($distribution) );
         $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } @$license ) );
-        $path->child('Changes.md')->spew_utf8( <<CHANGELOG );    # %v is non-standard and returns version number
-# Changelog for $distribution
-
-All notable changes to this project will be documented in this file.
-
-## [{{NEXT:%v}}] - {{NEXT:%Y-%m-%d}}
-
-### Added
-
-- This CHANGELOG file to hopefully serve as an evolving example of a
-  standardized open source project CHANGELOG.
-- See https://keepachangelog.com/en/1.1.0/
-
-CHANGELOG
-        $path->child('cpanfile')->spew_utf8(<<'CPAN');
-requires perl => v5.38.0;
-
-on configure => sub { };
-on build     => sub { };
-on test      => sub {
-    requires 'Test2::V0';
-};
-CPAN
-        $path->child('Build.PL')->spew_utf8(<<'BUILD_PL');
-#!perl
-use lib '.';
-use builder::mbt;
-builder::mbt::Build_PL();
-BUILD_PL
-        $path->child( 'builder', 'mbt.pm' )->touchpath->spew_utf8( <<'BUILDER' );
-package builder::mbt v0.0.1 {    # inspired by Module::Build::Tiny 0.047
-    use v5.26;
-    use CPAN::Meta;
-    use ExtUtils::Config 0.003;
-    use ExtUtils::Helpers 0.020 qw[make_executable split_like_shell detildefy];
-    use ExtUtils::Install qw    [/pm_to_blib install];
-    use ExtUtils::InstallPaths 0.002;
-    use File::Spec::Functions qw/catfile catdir rel2abs abs2rel/;
-    use Getopt::Long 2.36     qw/GetOptionsFromArray/;
-    use JSON::Tiny            qw[encode_json decode_json];          # Not in CORE
-    use Path::Tiny            qw[path];                             # Not in CORE
-    my $cwd = path('.')->realpath;
-
-    sub get_meta {
-        state $metafile //= path('META.json');
-        exit say "No META information provided\n" unless $metafile->is_file;
-        return CPAN::Meta->load_file( $metafile->realpath );
-    }
-
-    sub find {
-        my ( $pattern, $dir ) = @_;
-
-        #~ $dir = path($dir) unless $dir->isa('Path::Tiny');
-        sort values %{
-            $dir->visit(
-                sub {
-                    my ( $path, $state ) = @_;
-                    $state->{$path} = $path if $path->is_file && $path =~ $pattern;
-                },
-                { recurse => 1 }
-            )
-        };
-    }
-    my %actions;
-    %actions = (
-        build => sub {
-            my %opt     = @_;
-            my %modules = map { $_->relative => $cwd->child( 'blib', $_->relative )->relative } find( qr/\.pm$/,  $cwd->child('lib') );
-            my %docs    = map { $_->relative => $cwd->child( 'blib', $_->relative )->relative } find( qr/\.pod$/, $cwd->child('lib') );
-            my %scripts = map { $_->relative => $cwd->child( 'blib', $_->relative )->relative } find( qr/(?:)/,   $cwd->child('script') );
-            my %sdocs   = map { $_           => delete $scripts{$_} } grep {/.pod$/} keys %scripts;
-            my %shared  = map { $_->relative => $cwd->child( qw[blib lib auto share dist], $opt{meta}->name )->relative }
-                find( qr/(?:)/, $cwd->child('share') );
-            pm_to_blib( { %modules, %docs, %scripts, %shared }, $cwd->child(qw[blib lib auto]) );
-            make_executable($_) for values %scripts;
-            $cwd->child(qw[blib arch])->mkdir( { verbose => $opt{verbose} } );
-            return 0;
-        },
-        test => sub {
-            my %opt = @_;
-            $actions{build}->(%opt) if not -d 'blib';
-            require TAP::Harness::Env;
-            TAP::Harness::Env->create(
-                {   verbosity => $opt{verbose},
-                    jobs      => $opt{jobs} // 1,
-                    color     => !!-t STDOUT,
-                    lib       => [ map { $cwd->child( 'blib', $_ )->canonpath } qw[arch lib] ]
-                }
-            )->runtests( map { $_->relative->stringify } find( qr/\.t$/, $cwd->child('t') ) )->has_errors;
-        },
-        install => sub {
-            my %opt = @_;
-            $actions{build}->(%opt) if not -d 'blib';
-            install( $opt{install_paths}->install_map, @opt{qw[verbose dry_run uninst]} );
-            return 0;
-        },
-        clean => sub {
-            my %opt = @_;
-            path($_)->remove_tree( { verbose => $opt{verbose} } ) for qw[blib temp Build _build_params MYMETA.json];
-            return 0;
-        },
-    );
-
-    sub Build {
-        my $action = @ARGV && $ARGV[0] =~ /\A\w+\z/ ? shift @ARGV : 'build';
-        $actions{$action} // exit say "No such action: $action";
-        my $build_params = path('_build_params');
-        my ( $env, $bargv ) = $build_params->is_file ? @{ decode_json( $build_params->slurp_utf8 ) } : ();
-        GetOptionsFromArray(
-            $_,
-            \my %opt,
-            qw/install_base=s install_path=s% installdirs=s destdir=s prefix=s config=s% uninst:1 verbose:1 dry_run:1 pureperl-only:1 create_packlist=i jobs=i/
-        ) for grep {defined} $env, $bargv, \@ARGV;
-        $_ = detildefy($_) for grep {defined} @opt{qw[install_base destdir prefix]}, values %{ $opt{install_path} };
-        @opt{qw[config meta]} = ( ExtUtils::Config->new( $opt{config} ), get_meta() );
-        exit $actions{$action}->( %opt, install_paths => ExtUtils::InstallPaths->new( %opt, dist_name => $opt{meta}->name ) );
-    }
-
-    sub Build_PL {
-        my $meta = get_meta();
-        printf "Creating new 'Build' script for '%s' version '%s'\n", $meta->name, $meta->version;
-        $cwd->child('Build')->spew( sprintf "#!%s\nuse lib '%s', '.';\nuse %s;\n%s::Build();\n", $^X, $cwd->canonpath, __PACKAGE__, __PACKAGE__ );
-        make_executable('Build');
-        my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();
-        $cwd->child('_build_params')->spew_utf8( encode_json( [ \@env, \@ARGV ] ) );
-        $meta->save('MYMETA.json');
-    }
-}
-1;
-BUILDER
+        $path->child('Changes.md')->spew_utf8( App::mii::Templates::changes_md() );
+        $path->child('cpanfile')->spew_utf8( App::mii::Templates::cpanfile() );
+        $path->child('Build.PL')->spew_utf8( App::mii::Templates::build_pl() );
+        $path->child( 'builder', 'mbt.pm' )->touchpath->spew_utf8( App::mii::Templates::builder_pm() );
 
         # TODO: .github/workflow/*      in ::Git
         # TODO: .github/FUNDING.yaml    in ::Git
@@ -497,31 +333,5 @@ class App::mii::VCS::Subversion : isa(App::mii::VCS::Base) {
 
 class App::mii::VCS::Tar : isa(App::mii::VCS::Base) {
     method name () {'tar'}
-}
-
-package App::mii::Markdown v0.0.1 {    # based on Pod::Markdown::Github
-    use strict;
-    use warnings;
-    use parent 'Pod::Markdown';
-
-    sub syntax {
-        my ( $self, $paragraph ) = @_;
-
-        #~ https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-and-highlighting-code-blocks
-        return ( ( $paragraph =~ /(\b(sub|my|use|shift)\b|\$self|\=\>|\$_|\@_)/ ) ? 'perl' : ( $paragraph =~ /#include/ ) ? 'cpp' : '' );
-
-        # TODO: add C, C++, D, Fortran, etc. for Affix
-    }
-
-    sub _indent_verbatim {
-        my ( $self, $paragraph ) = @_;
-        $paragraph = $self->SUPER::_indent_verbatim($paragraph);
-
-        # Remove the leading 4 spaces because we'll escape via ```language
-        $paragraph = join "\n", map { s/^\s{4}//; $_ } split /\n/, $paragraph;
-
-        # Enclose the paragraph in ``` and specify the language
-        return sprintf( "```%s\n%s\n```", $self->syntax($paragraph), $paragraph );
-    }
 }
 1;

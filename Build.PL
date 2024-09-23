@@ -1,4 +1,4 @@
 #!perl
-use lib 'builder';
-use mbt;
+use lib '.';
+use builder::mbt;
 builder::mbt::Build_PL();
