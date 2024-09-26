@@ -30,7 +30,7 @@ class App::mii v1.0.0 {
     method version( $v //= () )  { $config->{version} = $v if defined $v; version::parse( 'version', $config->{version} ); }
     method name ( $v //= () )    { $config->{name} = $v =~ s[::][-]gr if defined $v; $config->{name} }
     method package ()            { $config->{name} =~ s[-][::]gr }
-    method author ()             { $config->{author} }
+    method author ()             { $config->{author} //= $self->whoami }
 
     method license () {
         map {
@@ -132,66 +132,49 @@ END
     }
 
     method init() {
-                warn;
-
+        warn;
         {
             $path->child($_)->mkdir for qw[t lib script eg share];
-        warn;
+            warn;
 
             # TODO: Create lib/.../....pm
             $self->write_pm( $self->package );
-                    warn;
-
+            warn;
             $self->write_meta;
-                    warn;
-
+            warn;
             $self->write_cpanfile;
-        warn;
+            warn;
 
             # TODO: .tidyallrc
             #
-                    warn;
-
+            warn;
             warn $self->package2path( $self->package );    #->touch;
         }
         warn;
 
         # TODO: create t/000_compile.t
         $self->git( 'init', $path );
-                warn;
-
-        $self->git( 'add',  $_ ) for qw[cpanfile META.json];
-                warn;
-
+        warn;
+        $self->git( 'add', $_ ) for qw[cpanfile META.json];
+        warn;
         for my $dir ( map { $path->child($_) } qw[t lib script eg share] ) {
-                    warn;
-
+            warn;
             $dir->touchpath;
-                    warn;
-
+            warn;
             $self->git( 'add', $dir );
-                    warn;
-
+            warn;
         }
-                warn;
-
+        warn;
     }
 
     method git(@args) {
-warn;
-        #~ warn join ' ', '>> git', @args;
-        my ( $stdout, $stderr, $exit ) = Capture::Tiny::capture {
-            system 'git', @args;
-        };
-
-        #~ use Data::Dump;
-        #~ ddx [ $stdout, $stderr, $exit ];
-        #~ $stdout;
+        $self->log( join ' ', '$ git', @args );
+        my ( $stdout, $stderr, $exit ) = Capture::Tiny::capture { system 'git', @args; };
     }
 
-        method whoami() {
-        my $me = Capture::Tiny::capture_stdout { system qw[git config user.name] };
-        my $at = Capture::Tiny::capture_stdout { system qw[git config user.email] };
+    method whoami() {
+        my ($me) = $self->git(qw[config user.name]);
+        my ($at) = $self->git(qw[config user.email]);
         $me // return ();
         chomp $me;
         chomp $at if $at;
@@ -209,6 +192,8 @@ my $mii = App::mii->new(
     #~ path => 'Acme-Mii/'
 );
 warn;
+#~ warn $mii->whoami;
+#~ die;
 $mii->init();
 warn;
 
