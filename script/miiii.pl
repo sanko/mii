@@ -34,48 +34,63 @@ class App::mii v1.0.0 {
 
     method license () {
         map {
-            my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key($_);
-            exit $self->log( qq[Software::License has no knowledge of "%s"], $_ ) unless $pkg;
-            $pkg
+            my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key( $_, 2 );
+            defined $pkg ? $pkg->new( { holder => $self->author } ) : $self->log( 'Software::License has no knowledge of "%s"', $_ ) && ()
         } @{ $config->{license} };
     }
     #
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
+
+    method prompt( $msg, @etc ) {
+        $msg .= '> ';
+        print @etc ? sprintf $msg, @etc : $msg;
+        my $ret = <STDIN>;
+        chomp $ret;
+        $ret;
+    }
 
     method package2path($package) {
         $path->child('lib')->child( ( $package =~ s[::][/]gr ) . '.pm' );
     }
     #
     ADJUST {
+        warn $path;
         $path = Path::Tiny::path($path)->absolute unless builtin::blessed $path;
+        warn $path->absolute;
         my $meta = $path->child('META.json');
+        $path = $path->child( $self->name ) if defined $self->name;
         warn;
         if ( $meta->exists ) {
             $config = decode_json $meta->slurp_utf8;
-            warn;
         }
         elsif ( defined $package ) {
             $self->name($package);
-            warn;
         }
-        else {
-            die '...what are we doing? I need a package name or something.';
-        }
-        warn;
+
+        #~ elsif ( $package = $self->prompt('I need a package name or something') ) {
+        #~ $self->name($package) if defined $package;
+        #~ }
     }
 
     # Pull list of files from git
     method gather_files() {
         my ($msg) = $self->git('ls-files');
+        $self->spew_meta;
+        $self->spew_cpanfile;
+        $self->spew_license;
         warn $msg;
         map { Path::Tiny::path($_)->canonpath } split /\R+/, $msg;
     }
 
     method generate_meta() {
         my $stable = !$self->version->is_alpha;
-        exit $self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
+        warn;
+        exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
+        warn;
         my $provides = $stable ? Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 ) : {};
+        warn;
         $_->{file} =~ s[\\+][/]g for values %$provides;
+        warn;
         +{
             # Retain clutter
             ( map { $_ => $config->{$_} } grep {/^x_/} keys %$config ),
@@ -96,24 +111,37 @@ class App::mii v1.0.0 {
             keywords    => $config->{keywords}    // [],
             no_index    => $config->{no_index}    // { file => [], directory => [], package => [], namespace => [] },
             ( defined $config->{optional_features} ? ( optional_features => $config->{optional_features} ) : () ),
-            prereqs => $config->{prereqs} // do { Module::CPANfile->load->prereq_specs }
-                // {},
+            prereqs   => $config->{prereqs} // eval { Module::CPANfile->load->prereq_specs } // {},
             provides  => $provides,                                                                   # blank unless stable
             resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } $self->license ] },
         };
     }
 
-    method write_meta () {
+    method spew_meta () {
+        warn;
         state $json //= JSON::PP->new->utf8->pretty->indent->core_bools->canonical->allow_nonref;
-        $path->child('META.json')->spew_utf8( $json->encode( $self->generate_meta ) );
+        warn;
+        use Data::Dump;
+        warn;
+        ddx $self->generate_meta;
+        ddx $json->encode( $self->generate_meta );
+        warn;
+        warn $path->child('META.json')->spew_utf8( $json->encode( $self->generate_meta ) );
+        warn $self->log( 'Wrote META.json in %s', $path->absolute );
     }
 
-    method write_cpanfile() {
+    method spew_cpanfile() {
         my $cpanfile = Module::CPANfile->from_prereqs( $self->generate_meta->{prereqs} );
         $cpanfile->save( $path->child('cpanfile') );
     }
 
-    method write_pm( $package, $version //= $self->version ) {
+    method spew_license() {
+        use Data::Dump;
+        ddx $self->license;
+        $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } $self->license ) );
+    }
+
+    method spew_package( $package, $version //= $self->version ) {
         my $file = $self->package2path($package);
         return if $file->exists;
         $file->touchpath;
@@ -131,40 +159,27 @@ END
     method release( $upload //= 1 ) {
     }
 
-    method init() {
-        warn;
+    method init( $pkg //= $self->prompt('Package name'), $ver //= v1.0.0 ) {
+        $self->name($pkg);
+        $self->version($ver);
+        $path = $path->child( $self->name );
+        $config->{license} //= ['artistic_2'];
         {
             $path->child($_)->mkdir for qw[t lib script eg share];
-            warn;
-
-            # TODO: Create lib/.../....pm
-            $self->write_pm( $self->package );
-            warn;
-            $self->write_meta;
-            warn;
-            $self->write_cpanfile;
-            warn;
+            $self->spew_package( $self->package );
+            $self->spew_meta;
+            $self->spew_cpanfile;
+            $self->spew_license;
 
             # TODO: .tidyallrc
             #
-            warn;
             warn $self->package2path( $self->package );    #->touch;
         }
-        warn;
 
         # TODO: create t/000_compile.t
         $self->git( 'init', $path );
-        warn;
-        $self->git( 'add', $_ ) for qw[cpanfile META.json];
-        warn;
-        for my $dir ( map { $path->child($_) } qw[t lib script eg share] ) {
-            warn;
-            $dir->touchpath;
-            warn;
-            $self->git( 'add', $dir );
-            warn;
-        }
-        warn;
+        $_->touchpath for map { $path->child($_) } qw[t lib script eg share];
+        $self->git( 'add', '.' );
     }
 
     method git(@args) {
@@ -184,21 +199,24 @@ END
 #
 use Data::Dump;
 $|++;
-
-#~ chdir
+use Path::Tiny;
+warn Path::Tiny->cwd->absolute;
 my $mii = App::mii->new(
-    package => 'Net::BitTorrent',
 
+    #~ package => 'Net::BitTorrent'
     #~ path => 'Acme-Mii/'
 );
+#~ $mii->init() unless $mii->path->child('META.json')->exists;
 warn;
+
 #~ warn $mii->whoami;
 #~ die;
-$mii->init();
+#~ $mii->init();
 warn;
 
 #~ warn $mii->package2path('Acme::Mii');
-#~ ddx $mii->gather_files;
-#~ ddx $mii->generate_meta;
 ddx $mii->gather_files;
+
+#~ ddx $mii->generate_meta;
+#~ ddx $mii->gather_files;
 warn;
