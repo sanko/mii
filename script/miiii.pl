@@ -19,6 +19,7 @@ class App::mii v1.0.0 {
     use JSON::PP qw[decode_json];    # not in CORE
     use Path::Tiny qw[];             # not in CORE
     use version    qw[];
+    use CPAN::Meta qw[];
     #
     field $path : param : reader //= '.';
     field $package : param //= ();
@@ -49,8 +50,8 @@ class App::mii v1.0.0 {
         $ret;
     }
 
-    method package2path($package) {
-        $path->child('lib')->child( ( $package =~ s[::][/]gr ) . '.pm' );
+    method package2path($package, $base //= 'lib') {
+        $path->child($base)->child( ( $package =~ s[::][/]gr ) . '.pm' );
     }
     #
     ADJUST {
@@ -61,7 +62,9 @@ class App::mii v1.0.0 {
         $path = $path->child( $self->name ) if defined $self->name;
         warn;
         if ( $meta->exists ) {
-            $config = decode_json $meta->slurp_utf8;
+            $config = CPAN::Meta->load_file($meta);
+
+            #~ $config = decode_json $meta->slurp_utf8;
         }
         elsif ( defined $package ) {
             $self->name($package);
@@ -93,7 +96,7 @@ class App::mii v1.0.0 {
         warn;
         +{
             # Retain clutter
-            ( map { $_ => $config->{$_} } grep {/^x_/} keys %$config ),
+            ( map { $_ => $config->{$_} } grep {/^x_/i} keys %$config ),
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
             abstract       => $self->abstract,
@@ -141,6 +144,19 @@ class App::mii v1.0.0 {
         $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } $self->license ) );
     }
 
+    method spew_builder() {
+        $path->child('Build.PL')->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
+use v5.40;
+use lib 'builder';
+use %s::Builder;
+%s::Builder->new->Build_PL();
+
+        $self->package2path($package, 'builder')->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
+# TODO
+
+
+    }
+
     method spew_package( $package, $version //= $self->version ) {
         my $file = $self->package2path($package);
         return if $file->exists;
@@ -152,7 +168,40 @@ END
 
     method dist(%args) {
 
-        # %args might contain version, etc.
+        #~ eval system 'tidyall -a';
+        #~ system $^X, $path->child('Build.PL')->stringify;
+        #~ system $^X, $path->child('Build')->stringify;
+        #~ TODO: update version number in Changelog, run Build.PL, etc.
+        #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
+        # TODO: Also spell check changelog
+        #~ system $^X, $path->child('Build')->stringify, 'test';
+        #~ $path->child('META.json')->spew_utf8( $json->utf8->pretty(1)->allow_blessed(1)->canonical->encode( $self->generate_meta() ) );
+        #~ $vcs->add_file( $path->child('META.json') );
+        {
+            ;
+
+            #~ my @dir        = split /::/, $distribution;
+            #~ my $file       = pop @dir;
+            #~ my $readme_src = $path->child( $config->{readme_from} // ( 'lib', @dir, $file . '.pod' ) );
+            #~ my $readme_src = $path->child( 'lib', split('::', $self->distribution) . '.pm' ) unless $readme_src->exists;
+            #~ $path->child('README.md')->spew_utf8( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown )
+            #~ if $readme_src->exists;
+        }
+        {
+            require Archive::Tar;
+            require List::Util;
+            my $arch = Archive::Tar->new;
+            $arch->add_files(
+                grep {
+                    my $re = $_;
+                    not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_Ignore'} }
+                } $self->gather_files
+            );
+            $_->mode( $_->mode & ~022 ) for $arch->get_files;
+            my $dist = Path::Tiny::path( $self->name . '-' . $self->version . '.tar.gz' )->canonpath;
+            $arch->write( $dist, &Archive::Tar::COMPRESS_GZIP() );
+            return -s $dist;
+        }
     }
     method test( $verbose //= 0 ) { }
 
@@ -170,6 +219,7 @@ END
             $self->spew_meta;
             $self->spew_cpanfile;
             $self->spew_license;
+            $self->spew_builder;
 
             # TODO: .tidyallrc
             #
@@ -182,9 +232,13 @@ END
         $self->git( 'add', '.' );
     }
 
+    method run( $exe, @args ) {
+        $self->log( join ' ', '$', $exe, @args );
+        my ( $stdout, $stderr, $exit ) = Capture::Tiny::capture { system $exe, @args; };
+    }
+
     method git(@args) {
-        $self->log( join ' ', '$ git', @args );
-        my ( $stdout, $stderr, $exit ) = Capture::Tiny::capture { system 'git', @args; };
+        $self->run( 'git', @args );
     }
 
     method whoami() {
@@ -206,6 +260,7 @@ my $mii = App::mii->new(
     #~ package => 'Net::BitTorrent'
     #~ path => 'Acme-Mii/'
 );
+
 #~ $mii->init() unless $mii->path->child('META.json')->exists;
 warn;
 
@@ -215,7 +270,8 @@ warn;
 warn;
 
 #~ warn $mii->package2path('Acme::Mii');
-ddx $mii->gather_files;
+#~ ddx $mii->gather_files;
+ddx $mii->dist;
 
 #~ ddx $mii->generate_meta;
 #~ ddx $mii->gather_files;
