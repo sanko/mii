@@ -50,17 +50,14 @@ class App::mii v1.0.0 {
         $ret;
     }
 
-    method package2path($package, $base //= 'lib') {
+    method package2path( $package, $base //= 'lib' ) {
         $path->child($base)->child( ( $package =~ s[::][/]gr ) . '.pm' );
     }
     #
     ADJUST {
-        warn $path;
         $path = Path::Tiny::path($path)->absolute unless builtin::blessed $path;
-        warn $path->absolute;
         my $meta = $path->child('META.json');
         $path = $path->child( $self->name ) if defined $self->name;
-        warn;
         if ( $meta->exists ) {
             $config = CPAN::Meta->load_file($meta);
 
@@ -87,13 +84,35 @@ class App::mii v1.0.0 {
 
     method generate_meta() {
         my $stable = !$self->version->is_alpha;
-        warn;
         exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
-        warn;
         my $provides = $stable ? Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 ) : {};
-        warn;
         $_->{file} =~ s[\\+][/]g for values %$provides;
-        warn;
+        my %prereqs = (
+            configure => {
+                requires => {
+                    'CPAN::Meta'             => 0,
+                    Exporter                 => 5.57,
+                    'ExtUtils::Helpers'      => 0.028,
+                    'ExtUtils::Install'      => 0,
+                    'ExtUtils::InstallPaths' => 0.002,
+                    'File::Basename'         => 0,
+                    'File::Find'             => 0,
+                    'File::Path'             => 0,
+                    'File::Spec::Functions'  => 0,
+                    'Getopt::Long'           => 2.36,
+                    'JSON::PP'               => 2,
+                    'Path::Tiny'             => 0,
+                    perl                     => 'v5.40.0'
+                }
+            }
+        );
+        for my $href ( $config->{prereqs}, Module::CPANfile->load->prereq_specs ) {
+            for my ( $stage, $mods )(%$href) {
+                for my ( $mod, $version )(%$mods) {
+                    $prereqs{$stage}{$mod} //= $version;
+                }
+            }
+        }
         +{
             # Retain clutter
             ( map { $_ => $config->{$_} } grep {/^x_/i} keys %$config ),
@@ -114,23 +133,15 @@ class App::mii v1.0.0 {
             keywords    => $config->{keywords}    // [],
             no_index    => $config->{no_index}    // { file => [], directory => [], package => [], namespace => [] },
             ( defined $config->{optional_features} ? ( optional_features => $config->{optional_features} ) : () ),
-            prereqs   => $config->{prereqs} // eval { Module::CPANfile->load->prereq_specs } // {},
+            prereqs   => \%prereqs,
             provides  => $provides,                                                                   # blank unless stable
             resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } $self->license ] },
         };
     }
 
-    method spew_meta () {
-        warn;
+    method spew_meta () {    # I could use CPAN::Meta but...
         state $json //= JSON::PP->new->utf8->pretty->indent->core_bools->canonical->allow_nonref;
-        warn;
-        use Data::Dump;
-        warn;
-        ddx $self->generate_meta;
-        ddx $json->encode( $self->generate_meta );
-        warn;
-        warn $path->child('META.json')->spew_utf8( $json->encode( $self->generate_meta ) );
-        warn $self->log( 'Wrote META.json in %s', $path->absolute );
+        $path->child('META.json')->spew_utf8( $json->encode( $self->generate_meta ) ) && $self->log( 'Wrote META.json in %s', $path->absolute );
     }
 
     method spew_cpanfile() {
@@ -151,9 +162,8 @@ use lib 'builder';
 use %s::Builder;
 %s::Builder->new->Build_PL();
 
-        $self->package2path($package, 'builder')->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
+        $self->package2path( $package, 'builder' )->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
 # TODO
-
 
     }
 
@@ -194,7 +204,7 @@ END
             $arch->add_files(
                 grep {
                     my $re = $_;
-                    not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_Ignore'} }
+                    not List::Util::any { $_ =~ /$re/ } @{ $config->{'X_Ignore'} }
                 } $self->gather_files
             );
             $_->mode( $_->mode & ~022 ) for $arch->get_files;
@@ -203,7 +213,11 @@ END
             return -s $dist;
         }
     }
-    method test( $verbose //= 0 ) { }
+
+    method test( $verbose //= 0 ) {
+        $self->build unless -d 'blib';
+        $self->run( $^X, 'Build', 'test' );
+    }
 
     method release( $upload //= 1 ) {
     }
@@ -253,26 +267,12 @@ END
 #
 use Data::Dump;
 $|++;
-use Path::Tiny;
-warn Path::Tiny->cwd->absolute;
-my $mii = App::mii->new(
+my $command = @ARGV ? shift @ARGV : 'dist';
+my $mii     = App::mii->new(
 
     #~ package => 'Net::BitTorrent'
     #~ path => 'Acme-Mii/'
 );
-
-#~ $mii->init() unless $mii->path->child('META.json')->exists;
-warn;
-
-#~ warn $mii->whoami;
-#~ die;
-#~ $mii->init();
-warn;
-
-#~ warn $mii->package2path('Acme::Mii');
-#~ ddx $mii->gather_files;
-ddx $mii->dist;
-
-#~ ddx $mii->generate_meta;
-#~ ddx $mii->gather_files;
-warn;
+my $method = $mii->can($command);
+$method // exit !say 'Cannot run command: ' . $command;
+$method->( $mii, @ARGV );
