@@ -22,21 +22,25 @@ class App::mii v1.0.0 {
     use CPAN::Meta qw[];
     #
     field $path : param : reader //= '.';
-    field $package : param //= ();
+
+    #~ field $package : param //= ();
     #
     field $config : reader;
     field $meta;
     #
-    method abstract( $v //= () ) { $config->{abstract} = $v if defined $v; $config->{abstract}; }
-    method version( $v //= () )  { $config->{version} = $v if defined $v; version::parse( 'version', $config->{version} ); }
-    method name ( $v //= () )    { $config->{name} = $v =~ s[::][-]gr if defined $v; $config->{name} }
-    method package ()            { $config->{name} =~ s[-][::]gr }
-    method author ()             { $config->{author} //= $self->whoami }
+    method abstract( $v //= () )    { $config->{abstract} = $v if defined $v; $config->{abstract}; }
+    method description( $v //= () ) { $config->{description} = $v if defined $v; $config->{description} }
+    method version( $v //= () )     { $config->{version} = $v if defined $v; version::parse( 'version', $config->{version} ); }
+    method name ( $v //= () )       { $config->{name} = $v =~ s[::][-]gr if defined $v; $config->{name} }
+    method distribution ()          { $config->{name} =~ s[-][::]gr }
+    method author ()                { $config->{author} //= $self->whoami }
 
     method license () {
         map {
             my ($pkg) = Software::LicenseUtils->guess_license_from_meta_key( $_, 2 );
-            defined $pkg ? $pkg->new( { holder => $self->author } ) : $self->log( 'Software::License has no knowledge of "%s"', $_ ) && ()
+            defined $pkg ? $pkg->new( { holder => _list_and( @{ $self->author } ) } ) :
+                $self->log( 'Software::License has no knowledge of "%s"', $_ ) &&
+                ()
         } @{ $config->{license} };
     }
     #
@@ -51,7 +55,9 @@ class App::mii v1.0.0 {
     }
 
     method package2path( $package, $base //= 'lib' ) {
-        $path->child($base)->child( ( $package =~ s[::][/]gr ) . '.pm' );
+        my @path = split '::', $package;
+        $path[-1] .= '.pm';
+        $path->child($base)->child(@path);
     }
     #
     ADJUST {
@@ -63,10 +69,10 @@ class App::mii v1.0.0 {
 
             #~ $config = decode_json $meta->slurp_utf8;
         }
-        elsif ( defined $package ) {
-            $self->name($package);
-        }
 
+        #~ elsif ( defined $package ) {
+        #~ $self->name($package);
+        #~ }
         #~ elsif ( $package = $self->prompt('I need a package name or something') ) {
         #~ $self->name($package) if defined $package;
         #~ }
@@ -78,11 +84,12 @@ class App::mii v1.0.0 {
         $self->spew_meta;
         $self->spew_cpanfile;
         $self->spew_license;
-        warn $msg;
         map { Path::Tiny::path($_)->canonpath } split /\R+/, $msg;
     }
 
     method generate_meta() {
+        state $meta;
+        return $meta if defined $meta;
         my $stable = !$self->version->is_alpha;
         exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
         my $provides = $stable ? Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 ) : {};
@@ -106,21 +113,22 @@ class App::mii v1.0.0 {
                 }
             }
         );
-        for my $href ( $config->{prereqs}, Module::CPANfile->load->prereq_specs ) {
+        for my $href ( Module::CPANfile->load->prereq_specs, $config->{prereqs} ) {
             for my ( $stage, $mods )(%$href) {
                 for my ( $mod, $version )(%$mods) {
                     $prereqs{$stage}{$mod} //= $version;
                 }
             }
         }
-        +{
+        $meta = {
+
             # Retain clutter
             ( map { $_ => $config->{$_} } grep {/^x_/i} keys %$config ),
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
             abstract       => $self->abstract,
             author         => $self->author,
-            dynamic_config => 1,                                                                      # lies
+            dynamic_config => $config->{dynamic_config} // 1,                                         # lies
             generated_by   => sprintf( 'App::mii %s', $App::mii::VERSION ),
             license        => [ map { $_->meta_name } $self->license ],
             'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
@@ -136,6 +144,12 @@ class App::mii v1.0.0 {
             prereqs   => \%prereqs,
             provides  => $provides,                                                                   # blank unless stable
             resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } $self->license ] },
+            #
+            sub {
+                my @contributors = $self->contributors;
+                scalar @contributors ? ( x_contributors => \@contributors ) : ();
+            }
+                ->()
         };
     }
 
@@ -150,30 +164,85 @@ class App::mii v1.0.0 {
     }
 
     method spew_license() {
-        use Data::Dump;
-        ddx $self->license;
         $path->child('LICENSE')->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } $self->license ) );
     }
 
     method spew_builder() {
-        $path->child('Build.PL')->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
+        my $dist = $self->distribution;
+        $path->child('Build.PL')->spew_utf8( <<END );
 use v5.40;
 use lib 'builder';
-use %s::Builder;
-%s::Builder->new->Build_PL();
+use ${dist}::Builder;
+${dist}::Builder->new->Build_PL();
+END
 
-        $self->package2path( $package, 'builder' )->spew_utf8( sprintf <<'', $self->distribution, $self->distribution );
-# TODO
-
+        #~ $self->package2path( $self->distribution, 'builder' )->spew_utf8( sprintf         <<'', $self->distribution, $self->distribution );
     }
 
     method spew_package( $package, $version //= $self->version ) {
         my $file = $self->package2path($package);
         return if $file->exists;
         $file->touchpath;
-        $file->spew_utf8( sprintf <<'END', $package, $version ) }
-package %s %s { ; }; 1;
+        my $author      = _list_and( @{ $self->author } );
+        my $abstract    = $self->abstract;
+        my $description = $self->description;
+        my $license     = '';
+        {
+            my @licenses = $self->license;
+            if ( scalar @licenses > 1 ) {
+                $license = "This distribution is covered by the following licenses:\n\n=over\n\n";
+                $license .= "=item\n\n" . $_->name . "\n\n" . $_->notice for @licenses;
+                $license = "=back\n\n";
+            }
+            else {
+                $license = $licenses[0]->notice;
+            }
+
+            # fix email
+            $license =~ s[(<|>)]['E<' . ($1 eq '<' ? 'l':'g') . 't>']ge;
+            1 while chomp $license;
+        }
+        $file->spew_utf8( <<END) }
+package $package $version {
+    ;
+};
+1;
 __END__
+=encoding utf-8
+
+=head1 NAME
+
+$package - $abstract
+
+=head1 SYNOPSIS
+
+    use $package;
+    ...;
+
+=head1 DESCRIPTION
+
+$description
+
+=head1 See Also
+
+TODO
+
+=head1 LICENSE
+
+$license
+
+See the F<LICENSE> file for full text.
+
+=head1 AUTHOR
+
+$author
+
+=begin stopwords
+
+
+=end stopwords
+
+=cut
 END
 
     method dist(%args) {
@@ -204,7 +273,7 @@ END
             $arch->add_files(
                 grep {
                     my $re = $_;
-                    not List::Util::any { $_ =~ /$re/ } @{ $config->{'X_Ignore'} }
+                    not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_ignore'} }
                 } $self->gather_files
             );
             $_->mode( $_->mode & ~022 ) for $arch->get_files;
@@ -229,7 +298,7 @@ END
         $config->{license} //= ['artistic_2'];
         {
             $path->child($_)->mkdir for qw[t lib script eg share];
-            $self->spew_package( $self->package );
+            $self->spew_package( $self->distribution );
             $self->spew_meta;
             $self->spew_cpanfile;
             $self->spew_license;
@@ -237,7 +306,7 @@ END
 
             # TODO: .tidyallrc
             #
-            warn $self->package2path( $self->package );    #->touch;
+            $self->package2path( $self->distribution );    #->touch;
         }
 
         # TODO: create t/000_compile.t
@@ -262,6 +331,24 @@ END
         chomp $me;
         chomp $at if $at;
         $me . ( $at ? qq[ <$at>] : '' );
+    }
+
+    method contributors () {
+        my ( $stdout, $stderr, $exit ) = $self->git( 'log', '--format="%aN <%aE>"' );
+        !$exit or return ();
+        my %uniq;
+        my @authors = map {m[^.+ <(.+?)>$]} @{ $self->author };
+        for my $pal ( split /\n/, $stdout ) {
+            my ($email) = $pal =~ m[^.+ <(.+?)>$];
+            $uniq{$email} //= $pal unless grep { $email eq $_ } @authors;
+        }
+        sort values(%uniq);
+    }
+
+    # Utils
+    sub _list_and (@list) {
+        return shift @list if scalar @list == 1;
+        join( ', ', @list[ 0 .. -1 ] ) . ' and ' . $list[-1];
     }
 };
 #
