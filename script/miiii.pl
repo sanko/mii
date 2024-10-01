@@ -367,6 +367,7 @@ MYMETA.*
 *.gz
 *.zip
 temp/
+t/dev/
 
 eg/*.pl
 eg/lib/*.pm
@@ -527,29 +528,35 @@ END
         my $tar_dir = Path::Tiny->new( $self->name . '-' . $self->version );
 
         # Broken on Windows?
-        #~ $arch->add_files( grep {
-        #~ my $re = $_;
-        #~ not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_ignore'} }
-        #~ } $self->gather_files);
         $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for grep {
             my $re = $_;
             not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_ignore'} }
         } $self->gather_files;
-
-        #~ $_->rename( $tar_dir->child($_->full_path))
-        #~ &&
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
         $arch->write( $out->stringify, &Archive::Tar::COMPRESS_GZIP() );
         $out->size ? $dist = $out : ();
     }
 
-    method dist(%args) {
+    method dist( $verbose //= 1 ) {
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, Meta.json, etc.
         #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
         # TODO: Also spell check changelog
         $self->git( 'add', $self->spew_readme_md );
+        my $dev_tests  = $path->child( 't', 'dev' );
+        my $spelling_t = eval { require Test::Spellunker } ? $dev_tests->child('spellunker.t')->touchpath->spew_utf8(<<'') : ();
+use Test::Spellunker;
+all_pod_files_spelling_ok();
+
+        my $pod_t = eval { require Test::Pod } ? $dev_tests->child('pod.t')->touchpath->spew_utf8(<<'') : ();
+use Test2::V0;
+use Test::Pod;
+all_pod_files_ok();
+done_testing;
+
+        $self->test($verbose);
+        $dev_tests->remove_tree( { safe => 0 } );
         $self->spew_tar_gz;
     }
 
@@ -559,8 +566,16 @@ END
     }
 
     method disttest( $verbose //= 0 ) {
-        my $dist = $self->dist;
-        $self->tee( 'cpanm', '--verbose', '--test-only', $dist->relative );
+
+        #~ TODO: $self->run('tidyall', '-a');
+        #~ TODO: update version number in Changelog, Meta.json, etc.
+        #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
+        # TODO: Also spell check changelog
+        $self->git( 'add', $self->spew_readme_md );
+        #
+        my $dist = $self->spew_tar_gz;
+        my ( $stdout, $stderr, $exit ) = $self->tee( 'cpanm', ( $verbose ? '--verbose' : () ), '--test-only', $dist );
+        $exit ? () : $dist;
     }
 
     method release( $upload //= 1 ) {
