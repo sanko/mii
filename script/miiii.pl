@@ -578,7 +578,7 @@ done_testing;
         $exit ? () : $dist;
     }
 
-    method release( $upload //= 1 ) {
+    method release( $ver //= $self->version, $upload //= 0 ) {
         ...;
     }
 

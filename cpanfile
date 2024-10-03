@@ -1,30 +1,34 @@
-requires 'perl', '5.038';    # Built on new class syntax
-requires 'JSON::Tiny';
-requires 'Template::Tiny';
-requires 'Getopt::Long';
-requires 'Pod::Usage';
-requires 'Software::License';
-requires 'Carp';
-requires 'Path::Tiny';
-requires 'Module::Build::Tiny';
-requires 'CPAN::Meta::Prereqs';
 requires 'CPAN::Meta';
+requires 'CPAN::Meta::Prereqs';
+requires 'Carp';
+requires 'Getopt::Long';
+requires 'JSON::Tiny';
+requires 'Module::Build::Tiny';
 requires 'Module::CPANfile';
 requires 'Module::Metadata';
+requires 'Path::Tiny';
 requires 'Pod::Markdown';
+requires 'Pod::Usage';
+requires 'Software::License';
+requires 'Template::Tiny';
+requires 'perl', '5.038';
 recommends 'Test::Spellunker';
-on 'test' => sub {
-    requires 'Test2::V0';
-    requires 'Capture::Tiny';
-};
-on 'configure' => sub {
-    requires 'Archive::Tar';
+on configure => sub {
     requires 'CPAN::Meta';
-    requires 'Module::Build::Tiny';
-    requires 'HTTP::Tiny';
-    requires 'File::Spec::Functions';
+    requires 'Exporter',          '5.57';
+    requires 'ExtUtils::Helpers', '0.028';
+    requires 'ExtUtils::Install';
+    requires 'ExtUtils::InstallPaths', '0.002';
     requires 'File::Basename';
-    requires 'File::Which';
-    requires 'File::Temp';
+    requires 'File::Find';
+    requires 'File::Path';
+    requires 'File::Spec::Functions';
+    requires 'Getopt::Long', '2.36';
+    requires 'JSON::PP',     '2';
     requires 'Path::Tiny';
+    requires 'perl', 'v5.40.0';
+};
+on test => sub {
+    requires 'Capture::Tiny';
+    requires 'Test2::V0';
 };

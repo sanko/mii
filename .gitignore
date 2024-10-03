@@ -6,9 +6,8 @@
 /Makefile
 /pm_to_blib
 
-/carton.lock
-/.carton/
 /local/
+.vs*
 
 nytprof.out
 nytprof/
@@ -18,9 +17,6 @@ cover_db/
 *.bak
 *.old
 *~
-*.swp
-*.o
-*.obj
 
 !LICENSE
 
@@ -30,8 +26,14 @@ MYMETA.*
 
 /App-mii-*
 
-script/Acme-Anvil*
-script/mii.conf
-t/Acme-Anvil
-
 .tidyall.d/
+*.gz
+*.zip
+temp/
+t/dev/
+
+eg/*.pl
+eg/lib/*.pm
+
+*.session
+

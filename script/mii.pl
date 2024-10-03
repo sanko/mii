@@ -19,26 +19,39 @@ use App::mii;
 pod2usage( -verbose => 99, -sections => [qw[NAME SYNOPSIS Commands/Commands]], -exitval => 0 ) unless @ARGV;
 my %commands = (
     mint => sub ( $package //= (), @args ) {
+        my $mii = App::mii->new();
+        $package //= $mii->prompt('Minting new dist. Package name');
         $package
-            // pod2usage( -message => 'mii: Minting a new distribution requires a package name.', -verbose => 99, -sections => ['Commands/mint'] );
+            // pod2usage( -message => 'mii: Minting a new distribution requires a package name', -verbose => 99, -sections => ['Commands/mint'] );
+        $mii->name($package);
         Getopt::Long::GetOptionsFromArray(
             \@args,
             'author=s'  => \my $author,
             'license=s' => \my @license,
-            'vcs=s'     => \my $vcs,
-            verbose     => \my $verbose    # flag
+
+            #~ 'vcs=s'     => \my $vcs,
+            verbose => \my $verbose    # flag
         );
-        App::mii::Mint::Base->new( distribution => $package, author => $author, vcs => $vcs, license => \@license )->mint;
+
+        #~ $mii->license(@license?@license: ['artistic_2']);
+        #~ $mii->author($author);
+        #~ die $version;
+        $mii->init( $package, v1.0.0 );
+
+        #~ $mii->author([$author});
+        die 'I should be generating a META.json here';
+
+        #~ App::mii::Mint::Base->new( distribution => $package, author => $author, vcs => $vcs, license => \@license )->mint;
     },
     help => sub( $subcommand //= () ) {
         pod2usage( -verbose => 99, -sections => [ qw[SYNOPSIS], 'Commands/' . ( $subcommand // 'Commands' ) ], -exitval => 0 );
     },
-    test    => sub {...},
-    tidy    => sub {...},
-    dist    => sub { App::mii->new()->dist(); },
-    install => sub {...},
-    pause   => sub {...},
-    version => sub { say 'mii: ' . $App::mii::VERSION . ' - https://github.com/sanko/mii' },
+    test     => sub { App::mii->new()->step_test(@_) },
+    tidy     => sub {...},                                                                      # Run tidyall -a
+    dist     => sub { App::mii->new()->dist(@_); },
+    disttest => sub { App::mii->new()->disttest(@_); },
+    release  => sub {...},
+    version  => sub { say 'mii: ' . $App::mii::VERSION . ' - https://github.com/sanko/mii' },
 
     # testing commands
     list => sub {
@@ -78,22 +91,12 @@ Mint a new distribution.
 
 Examples:
 
-    mii mint Acme::Anvil --vcs=git --license=artistic_2
+    mii mint Acme::Anvil --license=artistic_2
 
 =head3 Options
 
-    --vcs           your version control system of choice
-
-                    options:
-                        - git (default)
-                        - hg
-                        - brz
-                        - fossil
-                        - svn
-
+    --author        your name and email address
     --license       your software license(s) of choice (default is artistic_2)
-
-    --builder       your build system of choice
 
 =head2 help
 

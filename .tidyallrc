@@ -1,4 +1,3 @@
-
 ; Run "tidyall -a" to process all files.
 ; Run "tidyall -g" to process all added or modified files in the current git working directory.
 ; https://perladvent.org/2020/2020-12-01.html
