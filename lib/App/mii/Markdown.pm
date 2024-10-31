@@ -1,5 +1,5 @@
 package App::mii::Markdown v0.0.1 {    # based on Pod::Markdown::Github
-    use v5.40;
+    use v5.38;
     use parent 'Pod::Markdown';
 
     sub syntax {

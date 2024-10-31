@@ -1,6 +1,6 @@
 #!perl
 # This is mii2
-use v5.40;
+use v5.38;
 use feature 'class';
 no warnings 'experimental::class', 'experimental::builtin';
 use Carp           qw[];
@@ -110,7 +110,7 @@ class App::mii v2.0.0 {
                     'Getopt::Long'           => 2.36,
                     'JSON::PP'               => 2,
                     'Path::Tiny'             => 0,
-                    perl                     => 'v5.40.0'
+                    perl                     => 'v5.38.0'
                 }
             }
         );
@@ -176,7 +176,7 @@ class App::mii v2.0.0 {
         my $dist = $self->distribution;
         $out->touchpath;
         $out->spew_utf8( <<END ) && return $out; }
-use v5.40;
+use v5.38;
 use lib 'builder';
 use ${dist}::Builder;
 ${dist}::Builder->new->Build_PL();
@@ -190,7 +190,7 @@ END
 # Based on Module::Build::Tiny which is copyright (c) 2011 by Leon Timmermans, David Golden.
 # Module::Build::Tiny is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
-use v5.40;
+use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
 class    #
@@ -423,7 +423,7 @@ END
         return $out if $out->exists;
         my $dist = $self->distribution;
         $out->spew_utf8( <<END ) && return $out;
-use v5.40;
+use v5.38;
 use Test2::V0 '!subtest';
 use Test2::Util::Importer 'Test2::Tools::Subtest' => ( subtest_streamed => { -as => 'subtest' } );
 use lib 'lib', '../lib', 'blib/lib', '../blib/lib';
@@ -651,7 +651,7 @@ done_testing;
 };
 #
 package App::mii::Markdown v0.0.1 {    # based on Pod::Markdown::Github
-    use v5.40;
+    use v5.38;
     use parent 'Pod::Markdown';
 
     sub syntax {

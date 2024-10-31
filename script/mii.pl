@@ -6,7 +6,7 @@
 # mii install
 # mii pause
 #
-use v5.40;
+use v5.38;
 use Pod::Usage;
 use Getopt::Long;
 use lib '../lib';

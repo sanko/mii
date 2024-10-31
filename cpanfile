@@ -26,7 +26,7 @@ on configure => sub {
     requires 'Getopt::Long', '2.36';
     requires 'JSON::PP',     '2';
     requires 'Path::Tiny';
-    requires 'perl', 'v5.40.0';
+    requires 'perl', 'v5.38.0';
 };
 on test => sub {
     requires 'Capture::Tiny';
