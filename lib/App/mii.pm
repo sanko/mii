@@ -121,7 +121,7 @@ class App::mii v2.0.0 {
                     'Getopt::Long'           => 2.36,
                     'JSON::PP'               => 2,
                     'Path::Tiny'             => 0,
-                    perl                     => 'v5.38.0'
+                    perl                     => 'v5.40.0'
                 }
             }
         );
@@ -206,7 +206,7 @@ END
 # Based on Module::Build::Tiny which is copyright (c) 2011 by Leon Timmermans, David Golden.
 # Module::Build::Tiny is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
-use v5.38;
+use v5.40;
 use feature 'class';
 no warnings 'experimental::class';
 class    #
@@ -420,7 +420,7 @@ END
         return $out if $out->exists;
         my $dist = $self->distribution;
         $out->spew_raw( <<END ) && return $out;
-use v5.38;
+use v5.40;
 use Test2::V0 '!subtest';
 use Test2::Util::Importer 'Test2::Tools::Subtest' => ( subtest_streamed => { -as => 'subtest' } );
 use lib 'lib', '../lib', 'blib/lib', '../blib/lib';
@@ -538,6 +538,18 @@ END
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, META.json, etc.
+        {
+            my $pkg_source;
+            if ( defined $self->config->{x_version_from} ) {
+                $pkg_source = $self->path->child( $self->config->{x_version_from} );
+            }
+            if ( !( defined $pkg_source && $pkg_source->exists ) ) {
+                $pkg_source = $self->package2path( $self->distribution );
+            }
+            my $info = Module::Metadata->new_from_file($pkg_source);
+            $self->version( $info->version );
+        }
+
         #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
         # TODO: Also spell check changelog
         $self->git( 'add', $self->spew_readme_md );
