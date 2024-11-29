@@ -630,11 +630,12 @@ done_testing;
     }
 
     method contributors () {
-        my ( $stdout, $stderr, $exit ) = $self->git( 'log', '--format="%aN <%aE>"' );
+        my ( $stdout, $stderr, $exit ) = $self->git( 'shortlog', '-se' );
         !$exit or return ();
         my %uniq;
         my @authors = map {m[^.+ <(.+?)>$]} @{ $self->author };
         for my $pal ( split /\n/, $stdout ) {
+            $pal =~ s[^\s+\d+\s+][];
             my ($email) = $pal =~ m[^.+ <(.+?)>$];
             $uniq{$email} //= $pal unless grep { $email eq $_ } @authors;
         }
