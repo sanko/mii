@@ -65,7 +65,6 @@ class App::mii v2.0.0 {
     ADJUST {
         $path = Path::Tiny::path($path)->absolute unless builtin::blessed $path;
         my $meta = $path->child('META.json');
-        warn $meta->stringify;
         if ( $meta->exists ) {
             $config = CPAN::Meta->load_file($meta);
 
@@ -150,7 +149,7 @@ class App::mii v2.0.0 {
             version        => $self->version->stringify,
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
-            description => $config->{description} // '',
+            description => $config->{description} // $self->description // ' ',
             keywords    => $config->{keywords}    // [],
             no_index    => $config->{no_index}    // { file => [], directory => [], package => [], namespace => [] },
             ( defined $config->{optional_features} ? ( optional_features => $config->{optional_features} ) : () ),
@@ -168,8 +167,8 @@ class App::mii v2.0.0 {
 
     method spew_meta ( $out //= $path->child('META.json') ) {    # I could use CPAN::Meta but...
         $out = $path->child($out) unless builtin::blessed $out;
-        state $json //= JSON::PP->new->utf8->pretty->indent->core_bools->canonical->allow_nonref;
-        $out->spew_utf8( $json->encode( $self->generate_meta ) ) && return $out;
+        state $json //= JSON::PP->new->pretty->indent->core_bools->canonical->allow_nonref;
+        $out->spew_raw( $json->encode( $self->generate_meta ) ) && return $out;
     }
 
     method spew_changes( $out //= $path->child('Changes') ) {
@@ -185,15 +184,15 @@ class App::mii v2.0.0 {
 
     method spew_license( $out //= $path->child('LICENSE') ) {
         $out = $path->child($out) unless builtin::blessed $out;
-        $out->spew_utf8( join( '-' x 20 . "\n", map { $_->fulltext } $self->license ) ) && return $out;
+        $out->spew_raw( join( '-' x 20 . "\n", map { $_->fulltext } $self->license ) ) && return $out;
     }
 
     method spew_build_pl( $out //= $path->child('Build.PL') ) {
         $out = $path->child($out) unless builtin::blessed $out;
         my $dist = $self->distribution;
         $out->touchpath;
-        $out->spew_utf8( <<END ) && return $out; }
-use v5.38;
+        $out->spew_raw( <<END ) && return $out; }
+use v5.40;
 use lib 'builder';
 use ${dist}::Builder;
 ${dist}::Builder->new->Build_PL();
@@ -203,7 +202,7 @@ END
         $out = $path->child($out) unless builtin::blessed $out;
         my $dist = $self->distribution;
         $out->touchpath;
-        $out->spew_utf8( <<'END' =~ s[\{\{dist}}][$dist]rg ) && return $out; }
+        $out->spew_raw( <<'END' =~ s[\{\{dist}}][$dist]rg ) && return $out; }
 # Based on Module::Build::Tiny which is copyright (c) 2011 by Leon Timmermans, David Golden.
 # Module::Build::Tiny is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
@@ -243,7 +242,7 @@ class    #
     ADJUST {
         -e 'META.json' or die "No META information provided\n";
     }
-    method write_file( $filename, $content ) { path($filename)->spew_utf8($content) or die "Could not open $filename: $!\n" }
+    method write_file( $filename, $content ) { path($filename)->spew_raw($content) or die "Could not open $filename: $!\n" }
     method read_file ($filename)             { path($filename)->slurp_utf8          or die "Could not open $filename: $!\n" }
 
     method step_build() {
@@ -259,14 +258,15 @@ class    #
         my %module_shared = map { $_ => catfile( qw[blib lib auto share module], abs2rel( $_, 'module-share' ) ) } find( qr/(?:)/, 'module-share' );
         pm_to_blib( { %modules, %docs, %scripts, %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
         make_executable($_) for values %scripts;
-        !mkpath( catdir(qw[blib arch]), $verbose );
+        mkpath( catdir(qw[blib arch]), $verbose );
+        0;
     }
     method step_clean() { rmtree( $_, $verbose ) for qw[blib temp]; 0 }
 
     method step_install() {
         $self->step_build() unless -d 'blib';
         install( $install_paths->install_map, $verbose, $dry_run, $uninst );
-        return 0;
+        0;
     }
     method step_realclean () { rmtree( $_, $verbose ) for qw[blib temp Build _build_params MYMETA.yml MYMETA.json]; 0 }
 
@@ -331,7 +331,7 @@ END
     method spew_gitignore( $out //= $path->child('.gitignore') ) {
         $out = $path->child($out) unless builtin::blessed $out;
         my $dist = $self->name;
-        $out->spew_utf8( <<END) && return $out; }
+        $out->spew_raw( <<END) && return $out; }
 /.build/
 /_build/
 /Build
@@ -375,7 +375,7 @@ END
 
     method spew_tidyall_rc( $out //= $path->child('.tidyallrc') ) {
         $out = $path->child($out) unless builtin::blessed $out;
-        $out->spew_utf8( <<END) && return $out; }
+        $out->spew_raw( <<END) && return $out; }
 ; Run "tidyall -a" to process all files.
 ; Run "tidyall -g" to process all added or modified files in the current git working directory.
 ; https://perladvent.org/2020/2020-12-01.html
@@ -419,7 +419,7 @@ END
         $out = $path->child($out) unless builtin::blessed $out;
         return $out if $out->exists;
         my $dist = $self->distribution;
-        $out->spew_utf8( <<END ) && return $out;
+        $out->spew_raw( <<END ) && return $out;
 use v5.38;
 use Test2::V0 '!subtest';
 use Test2::Util::Importer 'Test2::Tools::Subtest' => ( subtest_streamed => { -as => 'subtest' } );
@@ -457,7 +457,7 @@ END
             1 while chomp $license;
         }
         $file->touchpath;
-        $file->spew_utf8( <<END) && $file }
+        $file->spew_raw( <<END) && $file }
 package ${package} ${version} {
     ;
 };
@@ -511,7 +511,7 @@ END
             my $pod = $pm->sibling( $pm->basename('.pm') . '.pod' );
             $readme_src = $pod->exists ? $pod : $pm;
         }
-        $out->spew_utf8( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown ) && return $out;
+        $out->spew_raw( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown ) && return $out;
     }
 
     method spew_tar_gz( $out //= Path::Tiny::path( $self->name . '-' . $self->version . '.tar.gz' )->absolute ) {
@@ -527,7 +527,7 @@ END
         # Broken on Windows?
         $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for grep {
             my $re = $_;
-            not List::Util::any { $_ =~ /$re/ } @{ $config->{'x_ignore'} }
+            not List::Util::any { $re =~ /$_/ } @{ $config->{'x_ignore'} }
         } $self->gather_files;
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
         $arch->write( $out->stringify, &Archive::Tar::COMPRESS_GZIP() );
@@ -537,16 +537,16 @@ END
     method dist( $verbose //= 1 ) {
 
         #~ TODO: $self->run('tidyall', '-a');
-        #~ TODO: update version number in Changelog, Meta.json, etc.
+        #~ TODO: update version number in Changelog, META.json, etc.
         #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
         # TODO: Also spell check changelog
         $self->git( 'add', $self->spew_readme_md );
         my $dev_tests  = $path->child( 't', 'dev' );
-        my $spelling_t = eval { require Test::Spellunker } ? $dev_tests->child('spellunker.t')->touchpath->spew_utf8(<<'') : ();
+        my $spelling_t = eval { require Test::Spellunker } ? $dev_tests->child('spellunker.t')->touchpath->spew_raw(<<'') : ();
 use Test::Spellunker;
 all_pod_files_spelling_ok();
 
-        my $pod_t = eval { require Test::Pod } ? $dev_tests->child('pod.t')->touchpath->spew_utf8(<<'') : ();
+        my $pod_t = eval { require Test::Pod } ? $dev_tests->child('pod.t')->touchpath->spew_raw(<<'') : ();
 use Test2::V0;
 use Test::Pod;
 all_pod_files_ok();

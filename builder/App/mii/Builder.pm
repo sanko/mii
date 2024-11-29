@@ -53,14 +53,15 @@ class    #
         my %module_shared = map { $_ => catfile( qw[blib lib auto share module], abs2rel( $_, 'module-share' ) ) } find( qr/(?:)/, 'module-share' );
         pm_to_blib( { %modules, %docs, %scripts, %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
         make_executable($_) for values %scripts;
-        !mkpath( catdir(qw[blib arch]), $verbose );
+        mkpath( catdir(qw[blib arch]), $verbose );
+        0;
     }
     method step_clean() { rmtree( $_, $verbose ) for qw[blib temp]; 0 }
 
     method step_install() {
         $self->step_build() unless -d 'blib';
         install( $install_paths->install_map, $verbose, $dry_run, $uninst );
-        return 0;
+        0;
     }
     method step_realclean () { rmtree( $_, $verbose ) for qw[blib temp Build _build_params MYMETA.yml MYMETA.json]; 0 }
 
