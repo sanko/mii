@@ -552,7 +552,8 @@ use Test::Pod;
 all_pod_files_ok();
 done_testing;
 
-        $self->test($verbose);
+
+        #~ $self->test($verbose);
         $dev_tests->remove_tree( { safe => 0 } );
         $self->spew_tar_gz;
     }
@@ -563,14 +564,7 @@ done_testing;
     }
 
     method disttest( $verbose //= 0 ) {
-
-        #~ TODO: $self->run('tidyall', '-a');
-        #~ TODO: update version number in Changelog, Meta.json, etc.
-        #~ eval 'use Test::Spellunker; 1' && Test::Spellunker::all_pod_files_spelling_ok();
-        # TODO: Also spell check changelog
-        $self->git( 'add', $self->spew_readme_md );
-        #
-        my $dist = $self->spew_tar_gz;
+        my $dist = $self->dist($verbose);
         my ( $stdout, $stderr, $exit ) = $self->tee( 'cpanm', ( $verbose ? '--verbose' : () ), '--test-only', $dist );
         $exit ? () : $dist;
     }
