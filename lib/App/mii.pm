@@ -4,15 +4,16 @@ use v5.38;
 use feature 'class';
 no warnings 'experimental::class', 'experimental::builtin';
 use Carp           qw[];
-use Template::Tiny qw[];       # not in CORE
+use Template::Tiny qw[];        # not in CORE
 use Pod::Usage     qw[];
-use Capture::Tiny  qw[];       # not in CORE
-use Software::License;         # not in CORE
-use Software::LicenseUtils;    # not in CORE
-use Module::Metadata qw[];
-use Module::CPANfile qw[];
-use Time::Piece      qw[];
-use Version::Next    qw[];
+use Capture::Tiny  qw[];        # not in CORE
+use Software::License;          # not in CORE
+use Software::LicenseUtils;     # not in CORE
+use Module::Metadata   qw[];
+use Module::CPANfile   qw[];
+use Time::Piece        qw[];
+use Version::Next      qw[];
+use CPAN::Upload::Tiny qw[];    # not in CORE
 use version 0.77;
 #
 use App::mii::Markdown;
@@ -597,10 +598,26 @@ done_testing;
         $exit ? () : $dist;
     }
 
-    method slurp_pause(%args) {
-        require CPAN::Uploader;
-        CPAN::Uploader->read_config_file( $self->config->{x_pause_from} // () );
+    method pause_dist( $path, $pause_uri //= 'https://pause.perl.org/pause/authenquery?ACTION=add_uri' ) {
+        my $dotpause
+            = defined $self->config->{x_pause_from} ? Path::Tiny::path( $self->config->{x_pause_from} ) : Path::Tiny::path( (<~>) )->child('.pause');
+        exit say <<'END'unless $dotpause->exists;
+Please set 'x_pause_from' in META.json or create a '.pause' file in your home directory.
+
+A '.pause' file should look like this:
+
+    user EXAMPLE
+    password your-secret-password
+
+See https://metacpan.org/dist/CPAN-Uploader/view/bin/cpan-upload#CONFIGURATION
+END
+        my $pause = CPAN::Upload::Tiny->new_from_config($dotpause);
+        $pause // return;
+
+        #~ $pause->upload_file($path);
+        warn $path;
     }
+    method git_tag( $tag //= $self->version ) { }
 
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
@@ -629,23 +646,10 @@ done_testing;
         return unless $args{pause};
         my $tarball = $self->dist(%args);
         $tarball // exit say 'Failed to build dist!';
-        if ( my ($pause) = $self->slurp_pause() ) {
-            require CPAN::Uploader;
-            my $uploader = CPAN::Uploader->new($config);
+        $self->pause_dist($tarball);
 
-            #~ $uploader->upload_file($tarball);
-            warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
-        }
-        return say <<'END';    # error
-Please set 'x_pause_from' in META.json or create a '.pause' file in your home directory.
-
-A '.pause' file should look like this:
-
-    user EXAMPLE
-    password your-secret-password
-
-See https://metacpan.org/dist/CPAN-Uploader/view/bin/cpan-upload#CONFIGURATION
-END
+        #~ $uploader->upload_file($tarball);
+        warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
         return 1;
     }
 

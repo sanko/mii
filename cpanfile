@@ -1,11 +1,8 @@
 requires 'CPAN::Meta';
 requires 'CPAN::Meta::Prereqs';
-requires 'CPAN::Uploader';
+requires 'CPAN::Upload::Tiny';
 requires 'Carp';
 requires 'JSON::Tiny';
-requires 'LWP::Protocol::http';
-requires 'LWP::Protocol::https';
-requires 'LWP::UserAgent';
 requires 'Module::Build::Tiny';
 requires 'Module::CPANfile';
 requires 'Module::Metadata';
