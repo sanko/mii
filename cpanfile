@@ -11,7 +11,9 @@ requires 'Pod::Usage';
 requires 'Software::License';
 requires 'Template::Tiny';
 requires 'Time::Piece';
-requires 'perl', '5.038';
+requires 'Version::Next';
+requires 'perl',    '5.038';
+requires 'version', '0.77';
 recommends 'Test::Spellunker';
 on configure => sub {
     requires 'CPAN::Meta';

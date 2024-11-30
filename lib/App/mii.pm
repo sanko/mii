@@ -176,7 +176,6 @@ class App::mii v1.0.0 {
 
     method spew_changes( $release //= 0, $out //= $path->child('Changes') ) {    # See https://metacpan.org/pod/CPAN::Changes::Spec
         $out = $path->child($out) unless builtin::blessed $out;
-        warn 'Release?????????????????????????????????? ' . $release;
         my $contents = $out->exists ? $out->slurp_raw : sprintf <<'END', $self->distribution;
 Revision history for %s
 
@@ -549,7 +548,7 @@ END
 
     method dist(%args) {
         my $verbose = $args{verbose} // 0;
-        my $release = $args{release} // 0;
+        my $release = $args{pause}   // 0;
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, META.json, etc.
@@ -640,6 +639,7 @@ done_testing;
             $path->child($_)->mkdir for qw[t lib script eg share];
             $self->spew_package( $self->distribution );
             $self->spew_meta;
+            $self->spew_changes;
             $self->spew_cpanfile;
             $self->spew_license;
             $self->spew_builder;

@@ -59,7 +59,9 @@
             "Software::License" : "0",
             "Template::Tiny" : "0",
             "Time::Piece" : "0",
-            "perl" : "5.038"
+            "Version::Next" : "0",
+            "perl" : "5.038",
+            "version" : "0.77"
          }
       },
       "test" : {
