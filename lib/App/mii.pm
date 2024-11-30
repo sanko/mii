@@ -613,11 +613,21 @@ See https://metacpan.org/dist/CPAN-Uploader/view/bin/cpan-upload#CONFIGURATION
 END
         my $pause = CPAN::Upload::Tiny->new_from_config($dotpause);
         $pause // return;
-
-        #~ $pause->upload_file($path);
-        warn $path;
+        $pause->upload_file($path);
     }
-    method git_tag( $tag //= $self->version ) { }
+
+    method git_tag( $tag //= $self->version ) {
+
+        #~ my ( $stdout, $stderr, $exit ) = $self->git(qw[diff --unified=0 --diff-filter=Md  HEAD~.. .\Changes]);
+        #~ warn $stdout;
+        #~ my @lines = split /\n/, $stdout;
+        #~ shift @lines until $lines[0] =~ /^\@\@/;
+        $self->git( 'commit', '-am', 'Stable ' . $tag );
+        $self->git( 'tag', '-a', $tag, '-m', 'Stable ' . $tag );
+
+        #~ $self->git( 'tag',  '-a',       $tag,     '-m',   '"' . join( "\n", 'Stable ' . $tag, '', map {/^\+(.*)$/} @lines ) . '"' );
+        $self->git( 'push', '--atomic', 'origin', 'HEAD', '--tags' );
+    }
 
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
@@ -641,15 +651,24 @@ END
 
         #~ use Data::Dump;
         #~ ddx \%args;
+        $self->spew_changes;
         $self->disttest(%args) // die 'Tests failed!';
         $args{pause} //= ( ( $self->prompt( 'Release ' . $self->distribution . ' version ' . $self->version . ' to PAUSE? [N]' ) // 'N' ) =~ m[y]i );
-        return unless $args{pause};
-        my $tarball = $self->dist(%args);
-        $tarball // exit say 'Failed to build dist!';
-        $self->pause_dist($tarball);
+        if ( $args{pause} ) {
+            my $tarball = $self->dist(%args);
+            $tarball // exit say 'Failed to build dist!';
+            $self->pause_dist($tarball);
+        }
+        $self->git_tag;
 
-        #~ $uploader->upload_file($tarball);
-        warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
+        # Get things ready for next release
+        {
+            my $changes = $path->child('Changes');
+            my $raw     = $changes->slurp_raw;
+            $raw =~ s[^\s*$][\n[Unreleased]\n\n    - \n]m unless $raw =~ m[\n\[Unreleased\]\n];
+            $changes->spew_raw($raw);
+            $self->git( 'add', 'Changes' );
+        }
         return 1;
     }
 
