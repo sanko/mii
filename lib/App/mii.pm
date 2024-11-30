@@ -12,6 +12,8 @@ use Software::LicenseUtils;    # not in CORE
 use Module::Metadata qw[];
 use Module::CPANfile qw[];
 use Time::Piece      qw[];
+use Version::Next    qw[];
+use version 0.77;
 #
 use App::mii::Markdown;
 #
@@ -30,7 +32,7 @@ class App::mii v1.0.0 {
     #
     method abstract( $v //= () )    { $config->{abstract} = $v if defined $v; $self->config->{abstract}; }
     method description( $v //= () ) { $config->{description} = $v if defined $v; $self->config->{description} }
-    method version( $v //= () )     { $config->{version} = $v if defined $v; version::parse( 'version', $self->config->{version} ); }
+    method version( $v //= () )     { $config->{version} = $v if defined $v; $self->config->{version} }
     method name ( $v //= () )       { $config->{name} = $v =~ s[::][-]gr if defined $v; $self->config->{name} }
     method distribution ()          { $config->{name} =~ s[-][::]gr }
     method author ()                { $config->{author} //= [ $self->whoami ] }
@@ -597,16 +599,32 @@ done_testing;
     }
 
     method release(%args) {
+        $self->version( $args{version} ) if defined $args{version};
+        {
+            my ( undef, undef, $exit ) = $self->git( 'log', '--head' );
+            if ( !$exit ) {
+                say 'Cannot release a dist not backed by a git repo';
+                return ();
+            }
+        }
+        {    # https://git-scm.com/book/en/v2/Git-Basics-Tagging
+            my ( $tag, $stderr, $exit ) = $self->git( 'tag', '-l', $self->version );
+            if ( split /\n+/, $tag ) {    # version already tagged in repo
+                my ( $taglist, undef, $commits ) = $self->git('tag');
+                !$commits or return ();
+                my ($ver) = reverse sort map { version::parse( 'version', $_ ) } split /\n+/, $taglist;
+                $ver = Version::Next::next_version( $ver->stringify );
+                $self->version( $self->prompt( 'Version [%s]', $ver ) || $ver );
+            }
+        }
 
         #~ use Data::Dump;
         #~ ddx \%args;
-        my $ver = $args{version} // $self->version;
-        $self->disttest(%args);
-        $args{pause} //= ( ( $self->prompt('Release to PAUSE? [N]') // 'N' ) =~ m[y]i );
-        warn $args{pause};
+        $self->disttest(%args) // die 'Tests failed!';
+        $args{pause} //= ( ( $self->prompt( 'Release ' . $self->distribution . ' version ' . $self->version . ' to PAUSE? [N]' ) // 'N' ) =~ m[y]i );
         return unless $args{pause};
-        $self->dist(%args);
-        warn 'TODO: I should be uploading to PAUSE, tagging the release, and pushing to github';
+        my $tarball = $self->dist(%args);
+        warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
     }
 
     method init(%args) {
