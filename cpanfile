@@ -1,7 +1,6 @@
 requires 'CPAN::Meta';
 requires 'CPAN::Meta::Prereqs';
 requires 'Carp';
-requires 'Getopt::Long';
 requires 'JSON::Tiny';
 requires 'Module::Build::Tiny';
 requires 'Module::CPANfile';
@@ -11,6 +10,7 @@ requires 'Pod::Markdown';
 requires 'Pod::Usage';
 requires 'Software::License';
 requires 'Template::Tiny';
+requires 'Time::Piece';
 requires 'perl', '5.038';
 recommends 'Test::Spellunker';
 on configure => sub {
@@ -23,8 +23,7 @@ on configure => sub {
     requires 'File::Find';
     requires 'File::Path';
     requires 'File::Spec::Functions';
-    requires 'Getopt::Long', '2.36';
-    requires 'JSON::PP',     '2';
+    requires 'JSON::PP', '2';
     requires 'Path::Tiny';
     requires 'perl', 'v5.38.0';
 };

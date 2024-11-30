@@ -11,10 +11,11 @@ use Software::License;         # not in CORE
 use Software::LicenseUtils;    # not in CORE
 use Module::Metadata qw[];
 use Module::CPANfile qw[];
+use Time::Piece      qw[];
 #
 use App::mii::Markdown;
 #
-class App::mii v2.0.0 {
+class App::mii v1.0.0 {
     use JSON::PP qw[decode_json];    # not in CORE
     use Path::Tiny qw[];             # not in CORE
     use version    qw[];
@@ -90,12 +91,12 @@ class App::mii v2.0.0 {
     }
 
     # Pull list of files from git
-    method gather_files() {
+    method gather_files( $release //= 0 ) {
         my ($msg) = $self->git('ls-files');
         $self->spew_meta;
         $self->spew_cpanfile;
         $self->spew_license;
-        $self->spew_changes;
+        $self->spew_changes($release) if $release;
         map { Path::Tiny::path($_)->relative } split /\R+/, $msg;
     }
 
@@ -171,9 +172,19 @@ class App::mii v2.0.0 {
         $out->spew_raw( $json->encode( $self->generate_meta ) ) && return $out;
     }
 
-    method spew_changes( $out //= $path->child('Changes') ) {
-        warn 'TODO: I need to dump a basic changelog if it does not exist';
-        warn 'TODO: If it exists, I need to update the latest section with the current version';
+    method spew_changes( $release //= 0, $out //= $path->child('Changes') ) {    # See https://metacpan.org/pod/CPAN::Changes::Spec
+        $out = $path->child($out) unless builtin::blessed $out;
+        warn 'Release?????????????????????????????????? ' . $release;
+        my $contents = $out->exists ? $out->slurp_raw : sprintf <<'END', $self->distribution;
+Revision history for %s
+
+[Unreleased]
+
+    - Initial release
+
+END
+        $contents =~ s[\[Unreleased\]][$self->version . ' ' . Time::Piece::gmtime->strftime('%Y-%m-%dT%H:%M:%SZ')]meg;
+        $out->spew_raw($contents);
     }
 
     method spew_cpanfile( $out //= $path->child('cpanfile') ) {
@@ -514,7 +525,7 @@ END
         $out->spew_raw( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown ) && return $out;
     }
 
-    method spew_tar_gz( $out //= Path::Tiny::path( $self->name . '-' . $self->version . '.tar.gz' )->absolute ) {
+    method spew_tar_gz( $verbose //= 0, $release //= 0, $out //= Path::Tiny::path( $self->name . '-' . $self->version . '.tar.gz' )->absolute ) {
         $out = $path->child($out) unless builtin::blessed $out;
         state $dist;
 
@@ -528,13 +539,15 @@ END
         $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for grep {
             my $re = $_;
             not List::Util::any { $re =~ /$_/ } @{ $config->{'x_ignore'} }
-        } $self->gather_files;
+        } $self->gather_files($release);
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
         $arch->write( $out->stringify, &Archive::Tar::COMPRESS_GZIP() );
         $out->size ? $dist = $out : ();
     }
 
-    method dist( $verbose //= 1 ) {
+    method dist(%args) {
+        my $verbose = $args{verbose} // 0;
+        my $release = $args{release} // 0;
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, META.json, etc.
@@ -567,25 +580,38 @@ done_testing;
 
         #~ $self->test($verbose);
         $dev_tests->remove_tree( { safe => 0 } );
-        $self->spew_tar_gz;
+        $self->spew_tar_gz( $verbose, $release );
     }
 
-    method test( $verbose //= 0 ) {
+    method test(%args) {
+        my $verbose = $args{verbose} // 0;
         $self->tee( $^X, 'Build.PL' ) unless -d 'blib';
         $self->tee( $^X, 'Build', 'test' );
     }
 
-    method disttest( $verbose //= 0 ) {
-        my $dist = $self->dist($verbose);
+    method disttest(%args) {
+        my $verbose = $args{verbose} // 0;
+        my $dist    = $self->dist(%args);
         my ( $stdout, $stderr, $exit ) = $self->tee( 'cpanm', ( $verbose ? '--verbose' : () ), '--test-only', $dist );
         $exit ? () : $dist;
     }
 
-    method release( $ver //= $self->version, $upload //= 0 ) {
-        ...;
+    method release(%args) {
+
+        #~ use Data::Dump;
+        #~ ddx \%args;
+        my $ver = $args{version} // $self->version;
+        $self->disttest(%args);
+        $args{pause} //= ( ( $self->prompt('Release to PAUSE? [N]') // 'N' ) =~ m[y]i );
+        warn $args{pause};
+        return unless $args{pause};
+        $self->dist(%args);
+        warn 'TODO: I should be uploading to PAUSE, tagging the release, and pushing to github';
     }
 
-    method init( $pkg //= $self->name // $self->prompt('Package name'), $ver //= v1.0.0 ) {
+    method init(%args) {
+        my $pkg = $args{package} // $self->prompt( defined $self->name ? 'Package name [' . $self->name . ']' : 'Package name: ' ) // $self->name;
+        my $ver = $args{version} // $self->prompt('Version [v1.0.0] ')                                                             // v1.0.0;
         $self->name($pkg);
         $self->version($ver);
 
@@ -597,7 +623,6 @@ done_testing;
             $self->spew_package( $self->distribution );
             $self->spew_meta;
             $self->spew_cpanfile;
-            $self->spew_changes;
             $self->spew_license;
             $self->spew_builder;
             $self->spew_build_pl;
@@ -636,6 +661,8 @@ done_testing;
     }
 
     method contributors () {
+        my ( undef, undef, $commits ) = $self->git( 'log', '--head' );
+        !$commits or return ();
         my ( $stdout, $stderr, $exit ) = $self->git( 'shortlog', '-se' );
         !$exit or return ();
         my %uniq;
