@@ -48,8 +48,12 @@
          "requires" : {
             "CPAN::Meta" : "0",
             "CPAN::Meta::Prereqs" : "0",
+            "CPAN::Uploader" : "0",
             "Carp" : "0",
             "JSON::Tiny" : "0",
+            "LWP::Protocol::http" : "0",
+            "LWP::Protocol::https" : "0",
+            "LWP::UserAgent" : "0",
             "Module::Build::Tiny" : "0",
             "Module::CPANfile" : "0",
             "Module::Metadata" : "0",

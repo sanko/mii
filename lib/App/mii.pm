@@ -597,6 +597,11 @@ done_testing;
         $exit ? () : $dist;
     }
 
+    method slurp_pause(%args) {
+        require CPAN::Uploader;
+        CPAN::Uploader->read_config_file( $self->config->{x_pause_from} // () );
+    }
+
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
         {
@@ -623,7 +628,25 @@ done_testing;
         $args{pause} //= ( ( $self->prompt( 'Release ' . $self->distribution . ' version ' . $self->version . ' to PAUSE? [N]' ) // 'N' ) =~ m[y]i );
         return unless $args{pause};
         my $tarball = $self->dist(%args);
-        warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
+        $tarball // exit say 'Failed to build dist!';
+        if ( my ($pause) = $self->slurp_pause() ) {
+            require CPAN::Uploader;
+            my $uploader = CPAN::Uploader->new($config);
+
+            #~ $uploader->upload_file($tarball);
+            warn 'TODO: I should be uploading ' . $tarball . ' to PAUSE, tagging the release, and pushing to github';
+        }
+        return say <<'END';    # error
+Please set 'x_pause_from' in META.json or create a '.pause' file in your home directory.
+
+A '.pause' file should look like this:
+
+    user EXAMPLE
+    password your-secret-password
+
+See https://metacpan.org/dist/CPAN-Uploader/view/bin/cpan-upload#CONFIGURATION
+END
+        return 1;
     }
 
     method init(%args) {
