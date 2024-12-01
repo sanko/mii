@@ -19,7 +19,7 @@ mint Module::Name [options]     mint a new distribution
 help [command]                  brief help message
 version                         display version information
 dist                            build a dist
-disttest                         build a dist and test it with cpanminus
+disttest                        build a dist and test it with cpanminus
 release                         build a dist and (maybe) upload it to PAUSE
 ```
 
@@ -60,6 +60,7 @@ Build a dist. Most metadata (not including the changelog) is updated.
 
 ```
 --verbose     be noisy
+--trial       generate a TRIAL dist
 ```
 
 ## disttest
@@ -81,7 +82,7 @@ Build a dist and upload it to PAUSE. All metadata (including the changelog) is u
 ```
 --verbose     be noisy
 --pause       upload to PAUSE without prompting us
---tag         tag the release in git without prompting us
+--trial       generate a TRIAL dist for PAUSE
 ```
 
 # DESCRIPTION

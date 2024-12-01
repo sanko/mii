@@ -527,7 +527,12 @@ END
         $out->spew_raw( App::mii::Markdown->new->parse_from_file( $readme_src->canonpath )->as_markdown ) && return $out;
     }
 
-    method spew_tar_gz( $verbose //= 0, $release //= 0, $out //= Path::Tiny::path( $self->name . '-' . $self->version . '.tar.gz' )->absolute ) {
+    method spew_tar_gz(
+        $verbose //= 0,
+        $release //= 0,
+        $trial   //= 0,
+        $out     //= Path::Tiny::path( $self->name . '-' . $self->version . ( $trial ? '-TRIAL' : '' ) . '.tar.gz' )->absolute
+    ) {
         $out = $path->child($out) unless builtin::blessed $out;
         state $dist;
 
@@ -550,6 +555,7 @@ END
     method dist(%args) {
         my $verbose = $args{verbose} // 0;
         my $release = $args{pause}   // 0;
+        my $trial   = $args{trial}   // 0;
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, META.json, etc.
@@ -582,7 +588,7 @@ done_testing;
 
         #~ $self->test($verbose);
         $dev_tests->remove_tree( { safe => 0 } );
-        $self->spew_tar_gz( $verbose, $release );
+        $self->spew_tar_gz( $verbose, $release, $trial );
     }
 
     method test(%args) {
@@ -652,14 +658,13 @@ END
         #~ use Data::Dump;
         #~ ddx \%args;
         $self->spew_changes;
-        $self->disttest(%args) // die 'Tests failed!';
-        $args{pause} //= ( ( $self->prompt( 'Release ' . $self->distribution . ' version ' . $self->version . ' to PAUSE? [N]' ) // 'N' ) =~ m[y]i );
+        my $tarball = $self->disttest(%args) // die 'Tests failed!';
+        $args{pause} //= ( ( $self->prompt( 'Upload %s to PAUSE? [N]', Path::Tiny::path($tarball)->basename ) // 'N' ) =~ m[y]i );
         if ( $args{pause} ) {
-            my $tarball = $self->dist(%args);
             $tarball // exit say 'Failed to build dist!';
             $self->pause_dist($tarball);
         }
-        $self->git_tag;
+        $self->git_tag unless $args{trial};
 
         # Get things ready for next release
         {
