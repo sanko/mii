@@ -31,12 +31,16 @@ class App::mii v1.0.0 {
     field $config : reader;
     field $meta;
     #
-    method abstract( $v //= () )    { $config->{abstract} = $v if defined $v; $self->config->{abstract}; }
-    method description( $v //= () ) { $config->{description} = $v if defined $v; $self->config->{description} }
-    method version( $v //= () )     { $config->{version} = $v if defined $v; $self->config->{version} }
-    method name ( $v //= () )       { $config->{name} = $v =~ s[::][-]gr if defined $v; $self->config->{name} }
-    method distribution ()          { $config->{name} =~ s[-][::]gr }
-    method author ()                { $config->{author} //= [ $self->whoami ] }
+    method abstract( $v    //= () ) { $config->{abstract}    = $v if defined $v; $config->{abstract}; }
+    method description( $v //= () ) { $config->{description} = $v if defined $v; $config->{description} }
+
+    method version( $v //= () ) {
+        $config->{version} = builtin::blessed $v ? $v : version::parse( 'version', $v ) if defined $v;
+        builtin::blessed $config->{version} ? $config->{version} : version::parse( 'version', $config->{version} );
+    }
+    method name ( $v //= () ) { $config->{name} = $v =~ s[::][-]gr if defined $v; $config->{name} }
+    method distribution ()    { $config->{name}      =~ s[-][::]gr }
+    method author ()          { $config->{author} //= [ $self->whoami ] }
 
     method license ( $v //= () ) {
         if ( defined $v && ref $v eq 'ARRAY' ) {
@@ -57,7 +61,7 @@ class App::mii v1.0.0 {
         print @etc ? sprintf $msg, @etc : $msg;
         my $ret = <STDIN>;
         chomp $ret;
-        $ret;
+        length $ret ? $ret : ();
     }
 
     method package2path( $package, $base //= 'lib' ) {
@@ -516,8 +520,8 @@ END
     method spew_readme_md( $out //= $path->child('README.md') ) {
         $out = $path->child($out) unless builtin::blessed $out;
         my $readme_src;
-        if ( defined $self->config->{x_readme_from} ) {
-            $readme_src = $self->path->child( $self->config->{x_readme_from} );
+        if ( defined $config->{x_readme_from} ) {
+            $readme_src = $self->path->child( $config->{x_readme_from} );
         }
         if ( !( defined $readme_src && $readme_src->exists ) ) {
             my $pm  = $self->package2path( $self->distribution );
@@ -561,8 +565,8 @@ END
         #~ TODO: update version number in Changelog, META.json, etc.
         {
             my $pkg_source;
-            if ( defined $self->config->{x_version_from} ) {
-                $pkg_source = $self->path->child( $self->config->{x_version_from} );
+            if ( defined $config->{x_version_from} ) {
+                $pkg_source = $self->path->child( $config->{x_version_from} );
             }
             if ( !( defined $pkg_source && $pkg_source->exists ) ) {
                 $pkg_source = $self->package2path( $self->distribution );
@@ -605,8 +609,7 @@ done_testing;
     }
 
     method pause_dist( $path, $pause_uri //= 'https://pause.perl.org/pause/authenquery?ACTION=add_uri' ) {
-        my $dotpause
-            = defined $self->config->{x_pause_from} ? Path::Tiny::path( $self->config->{x_pause_from} ) : Path::Tiny::path( (<~>) )->child('.pause');
+        my $dotpause = defined $config->{x_pause_from} ? Path::Tiny::path( $config->{x_pause_from} ) : Path::Tiny::path( (<~>) )->child('.pause');
         exit say <<'END'unless $dotpause->exists;
 Please set 'x_pause_from' in META.json or create a '.pause' file in your home directory.
 
@@ -678,8 +681,11 @@ END
     }
 
     method init(%args) {
-        my $pkg = $args{package} // $self->prompt( defined $self->name ? 'Package name [' . $self->name . ']' : 'Package name: ' ) // $self->name;
-        my $ver = $args{version} // $self->prompt('Version [v1.0.0] ')                                                             // v1.0.0;
+
+        #~ use Data::Dump;
+        #~ ddx \%args;
+        my $pkg = $args{package} // $self->name;
+        my $ver = $args{version} // $self->version // v1.0.0;
         $self->name($pkg);
         $self->version($ver);
 
