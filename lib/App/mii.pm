@@ -265,7 +265,7 @@ class    #
     method step_build() {
         for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
             ( my $pm = $pl_file ) =~ s/\.PL$//;
-            system $^X, $pl_file, $pm and die "$pl_file returned $?\n";
+            system $^X, $pl_file->stringify, $pm and die "$pl_file returned $?\n";
         }
         my %modules       = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pm$/,  'lib' );
         my %docs          = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pod$/, 'lib' );
@@ -296,7 +296,7 @@ class    #
             ( color => -t STDOUT ),
             lib => [ map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib] ],
         );
-        TAP::Harness::Env->create( \%test_args )->runtests( sort +find( qr/\.t$/, 't' ) )->has_errors;
+        TAP::Harness::Env->create( \%test_args )->runtests( sort map { $_->stringify } find( qr/\.t$/, 't' ) )->has_errors;
     }
 
     method get_arguments (@sources) {
@@ -335,11 +335,17 @@ use %s;
         $meta->save(@$_) for ['MYMETA.json'];
     }
 
-    sub find {
-        my ( $pattern, $dir ) = @_;
-        my @ret;
-        File::Find::find( sub { push @ret, $File::Find::name if /$pattern/ && -f }, $dir ) if -d $dir;
-        return @ret;
+    sub find ( $pattern, $base ) {
+        $base = path($base) unless builtin::blessed $base;
+        my $blah = $base->visit(
+            sub ( $path, $state ) {
+                $state->{$path} = $path if $path =~ $pattern;
+
+                #~ return \0 if keys %$state == 10;
+            },
+            { recurse => 1 }
+        );
+        values %$blah;
     }
     };
 1;
