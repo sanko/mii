@@ -282,7 +282,15 @@ class    #
 
     method step_install() {
         $self->step_build() unless -d 'blib';
-        install( $install_paths->install_map, $verbose, $dry_run, $uninst );
+        install(
+            [   from_to           => $install_paths->install_map,
+                verbose           => $verbose,
+                dry_run           => $dry_run,
+                uninstall_shadows => $uninst,
+                skip              => undef,
+                always_copy       => 1
+            ]
+        );
         0;
     }
     method step_realclean () { rmtree( $_, $verbose ) for qw[blib temp Build _build_params MYMETA.yml MYMETA.json]; 0 }
