@@ -208,7 +208,7 @@ END
         $out = $path->child($out) unless builtin::blessed $out;
         my $dist = $self->distribution;
         $out->touchpath;
-        $out->spew_raw( <<END ) && return $out; }
+        $out->spew_raw(<<END) && return $out; }
 use v5.40;
 use lib 'builder';
 use ${dist}::Builder;
@@ -249,7 +249,7 @@ class    #
     field $installdirs : param   //= '';
     field $uninst : param        //= 0;    # Make more sense to have a ./Build uninstall command but...
     field $install_paths : param //= ExtUtils::InstallPaths->new( dist_name => $meta->name );
-    field $verbose : param(v)    //= 0;
+    field $verbose : param       //= 0;
     field $dry_run : param       //= 0;
     field $pureperl : param      //= 0;
     field $jobs : param          //= 1;
@@ -349,7 +349,7 @@ GetOptionsFromArray \@ARGV, \%%opts, qw[install_base=s install_path=s%% installd
         $base = path($base) unless builtin::blessed $base;
         my $blah = $base->visit(
             sub ( $path, $state ) {
-                $state->{$path} = $path if $path =~ $pattern;
+                $state->{$path} = $path if -f $path && $path =~ $pattern;
 
                 #~ return \0 if keys %$state == 10;
             },
@@ -364,7 +364,7 @@ END
     method spew_gitignore( $out //= $path->child('.gitignore') ) {
         $out = $path->child($out) unless builtin::blessed $out;
         my $dist = $self->name;
-        $out->spew_raw( <<END) && return $out; }
+        $out->spew_raw(<<END) && return $out; }
 /.build/
 /_build/
 /Build
@@ -408,7 +408,7 @@ END
 
     method spew_tidyall_rc( $out //= $path->child('.tidyallrc') ) {
         $out = $path->child($out) unless builtin::blessed $out;
-        $out->spew_raw( <<END) && return $out; }
+        $out->spew_raw(<<END) && return $out; }
 ; Run "tidyall -a" to process all files.
 ; Run "tidyall -g" to process all added or modified files in the current git working directory.
 ; https://perladvent.org/2020/2020-12-01.html
@@ -452,7 +452,7 @@ END
         $out = $path->child($out) unless builtin::blessed $out;
         return $out if $out->exists;
         my $dist = $self->distribution;
-        $out->spew_raw( <<END ) && return $out;
+        $out->spew_raw(<<END) && return $out;
 use v5.40;
 use Test2::V0 '!subtest';
 use Test2::Util::Importer 'Test2::Tools::Subtest' => ( subtest_streamed => { -as => 'subtest' } );
@@ -490,7 +490,7 @@ END
             1 while chomp $license;
         }
         $file->touchpath;
-        $file->spew_raw( <<END) && $file }
+        $file->spew_raw(<<END) && $file }
 package ${package} ${version} {
     ;
 };
@@ -568,7 +568,7 @@ END
             not List::Util::any { $re =~ /$_/ } @{ $config->{'x_ignore'} }
         } $self->gather_files($release);
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
-        $arch->write( $out->stringify, &Archive::Tar::COMPRESS_GZIP() );
+        $arch->write( $out->stringify, Archive::Tar::COMPRESS_GZIP() );
         $out->size ? $dist = $out : ();
     }
 
