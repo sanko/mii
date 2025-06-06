@@ -13,7 +13,7 @@ jobs:
           - -Duselongdouble
           - -Dusequadmath
         os:
-          - ubuntu-22.04
+          - ubuntu-24.04
         perl: '${{ fromJSON(needs.setup.outputs.matrix).perl }}'
       max-parallel: 25
     uses: sanko/actions/.github/workflows/affix-unix.yml@main
@@ -48,7 +48,7 @@ jobs:
       - macos
       - win32
       - linux
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Download test results
         uses: actions/download-artifact@v4
@@ -83,7 +83,7 @@ jobs:
     name: Generate Testing Matrix
     outputs:
       matrix: '${{ steps.matrix.outputs.matrix }}'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - env:
           DATA: |
