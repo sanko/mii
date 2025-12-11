@@ -97,14 +97,32 @@ class App::mii v1.0.0 {
         #~ }
     }
 
-    # Pull list of files from git
-    method gather_files( $release //= 0 ) {
-        my ($msg) = $self->git('ls-files');
+    method gather_files( $release //= 0 ) {    # And spew MANIFEST
+        my ($msg) = $self->git( 'ls-files', '--recurse-submodules' );
+
+        # Generate artifacts that must exist before we list files
         $self->spew_meta;
         $self->spew_cpanfile;
         $self->spew_license;
         $self->spew_changes($release) if $release;
-        map { Path::Tiny::path($_)->relative } split /\R+/, $msg;
+        require List::Util;
+        my @ignore_pats = map {
+            my $p = $_;
+            $p = quotemeta($p);
+            $p =~ s/\\\*/.*/g;
+            $p =~ s/\\\?/./g;
+            qr/^$p$/;
+        } @{ $config->{'x_ignore'} // [] };
+        #
+        my @files = sort grep {
+            my $path = "$_";
+            $path =~ s{\\}{/}g;
+            !List::Util::any { $path =~ $_ } @ignore_pats
+        } map { Path::Tiny::path($_)->relative } split /\R+/, $msg;
+        push @files, Path::Tiny::path('MANIFEST') unless ( List::Util::any { "$_" eq 'MANIFEST' } @files );
+        #
+        $path->child('MANIFEST')->spew_raw( join "\n", @files );
+        return @files;
     }
 
     method generate_meta() {
@@ -558,15 +576,11 @@ END
 
         #~ return $dist if defined $dist;
         require Archive::Tar;
-        require List::Util;
         my $arch    = Archive::Tar->new;
         my $tar_dir = Path::Tiny->new( $self->name . '-' . $self->version );
 
-        # Broken on Windows?
-        $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for grep {
-            my $re = $_;
-            not List::Util::any { $re =~ /$_/ } @{ $config->{'x_ignore'} }
-        } $self->gather_files($release);
+        # Add files (listing and filtering is now handled in gather_files)
+        $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for $self->gather_files($release);
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
         $arch->write( $out->stringify, Archive::Tar::COMPRESS_GZIP() );
         $out->size ? $dist = $out : ();

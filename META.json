@@ -103,5 +103,12 @@
       }
    },
    "version" : "v1.0.0",
+   "x_ignore" : [
+      ".tidyallrc",
+      ".github/FUNDING.yml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/delete_cache.yml",
+      ".gitignore"
+   ],
    "x_readme_from" : "script/mii.pl"
 }

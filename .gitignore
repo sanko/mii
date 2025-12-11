@@ -37,3 +37,5 @@ eg/lib/*.pm
 
 *.session
 
+/lib/App/mii.html
+/lib/App/pod2htmd.tmp
