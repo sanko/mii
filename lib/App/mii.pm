@@ -1,7 +1,7 @@
 #!perl
 # This is mii2
 use v5.38;
-use feature 'class';
+use feature 'class', 'try';
 no warnings 'experimental::class', 'experimental::builtin';
 use Carp           qw[];
 use Template::Tiny qw[];        # not in CORE
@@ -14,6 +14,7 @@ use Module::CPANfile   qw[];
 use Time::Piece        qw[];
 use Version::Next      qw[];
 use CPAN::Upload::Tiny qw[];    # not in CORE
+use List::Util         qw[];
 use version 0.77;
 #
 use App::mii::Markdown;
@@ -30,6 +31,9 @@ class App::mii v1.0.0 {
     #
     field $config : reader;
     field $meta;
+    field $trial : reader //= 0;
+    #
+    field @plugins;
     #
     method abstract( $v    //= () ) { $config->{abstract}    = $v if defined $v; $config->{abstract}; }
     method description( $v //= () ) { $config->{description} = $v if defined $v; $config->{description} }
@@ -75,6 +79,8 @@ class App::mii v1.0.0 {
         my $meta = $path->child('META.json');
         if ( $meta->exists ) {
             $config = CPAN::Meta->load_file($meta);
+            $self->load_plugins();
+            $self->trigger('ADJUST');
 
             #~ $config = decode_json $meta->slurp_utf8;
         }
@@ -105,7 +111,6 @@ class App::mii v1.0.0 {
         $self->spew_cpanfile;
         $self->spew_license;
         $self->spew_changes($release) if $release;
-        require List::Util;
         my @ignore_pats = map {
             my $p = $_;
             $p = quotemeta($p);
@@ -114,14 +119,19 @@ class App::mii v1.0.0 {
             qr/^$p$/;
         } @{ $config->{'x_ignore'} // [] };
         #
-        my @files = sort grep {
+        my @files = grep {
             my $path = "$_";
             $path =~ s{\\}{/}g;
             !List::Util::any { $path =~ $_ } @ignore_pats
         } map { Path::Tiny::path($_)->relative } split /\R+/, $msg;
         push @files, Path::Tiny::path('MANIFEST') unless ( List::Util::any { "$_" eq 'MANIFEST' } @files );
         #
+        @files = sort @files;
+        #
+        $self->trigger( 'gather_files', \@files );
+        #
         $path->child('MANIFEST')->spew_raw( join "\n", @files );
+        $self->tee( 'tidyall', '-a' );
         return @files;
     }
 
@@ -129,8 +139,34 @@ class App::mii v1.0.0 {
         state $meta;
         return $meta if defined $meta;
         my $stable = !$self->version->is_alpha;
+        my $status = $trial ? 'testing' : $stable ? 'stable' : 'unstable';
         exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
-        my $provides = $stable ? Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 ) : {};
+        my $provides;
+        if ( $stable && $path->child('lib')->children ) {
+            $provides = Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 );
+            $_->{file} =~ s[\\+][/]g for values %$provides;
+
+            # Apply no_index filtering
+            my $no_index = $config->{no_index} // {};
+            for my $pkg ( keys %$provides ) {
+                my $file = $provides->{$pkg}{file};
+
+                # Check 'package' exclusion
+                if ( my $excl = $no_index->{package} ) {
+                    delete $provides->{$pkg} if grep { $pkg eq $_ } @$excl;
+                }
+
+                # Check 'directory' exclusion (if file matches path)
+                if ( my $dirs = $no_index->{directory} ) {
+                    delete $provides->{$pkg} if grep { $file =~ m{^\Q$_\E/} } @$dirs;
+                }
+
+                # Check 'file' exclusion
+                if ( my $files = $no_index->{file} ) {
+                    delete $provides->{$pkg} if grep { $file eq $_ } @$files;
+                }
+            }
+        }
         $_->{file} =~ s[\\+][/]g for values %$provides;
         my %prereqs = (
             configure => {
@@ -171,7 +207,7 @@ class App::mii v1.0.0 {
             license        => [ map { $_->meta_name } $self->license ],
             'meta-spec'    => { version => 2, url => 'https://metacpan.org/pod/CPAN::Meta::Spec' },
             name           => $self->name,
-            release_status => $stable ? 'stable' : 'unstable',                                        # TODO: stable, testing, unstable
+            release_status => $status,
             version        => $self->version->stringify,
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#OPTIONAL-FIELDS
@@ -180,8 +216,15 @@ class App::mii v1.0.0 {
             no_index    => $config->{no_index}    // { file => [], directory => [], package => [], namespace => [] },
             ( defined $config->{optional_features} ? ( optional_features => $config->{optional_features} ) : () ),
             prereqs   => \%prereqs,
-            provides  => $provides,                                                                   # blank unless stable
+            provides  => $provides,    # blank unless stable
             resources => { ( defined $config->{resources} ? %{ $config->{resources} } : () ), license => [ map { $_->url } $self->license ] },
+            #
+            x_ignore => [
+                List::Util::uniq(
+                    ( defined $config->{x_ignore} ? @{ $config->{x_ignore} } : () ),
+                    '.tidyallrc', '.gitignore', '.clang-format', '.github/**'
+                )
+            ],
             #
             sub {
                 my @contributors = $self->contributors;
@@ -191,24 +234,106 @@ class App::mii v1.0.0 {
         };
     }
 
+    method get_repo_url() {
+
+        # Try META resources first
+        if ( my $url = $config->{resources}{repository}{web} // $config->{resources}{repository}{url} ) {
+            $url =~ s/\.git$//;
+            return $url if $url =~ m{^https?://};
+        }
+
+        # Try git config
+        try {
+            my ($url) = $self->git( 'remote', 'get-url', 'origin' );
+            chomp $url;
+
+            # Convert git@github.com:User/Repo.git -> https://github.com/User/Repo
+            if ( $url =~ s{^(?:git@|https://)([\w\.]+?)[:/](.+?)(\.git)?$}{https://$1/$2} ) {
+                return $url;
+            }
+        }
+        catch ($e) { }
+        ...;
+        return 'https://github.com/USER/REPO';    # This should never happen...
+    }
+
     method spew_meta ( $out //= $path->child('META.json') ) {    # I could use CPAN::Meta but...
         $out = $path->child($out) unless builtin::blessed $out;
         state $json //= JSON::PP->new->pretty->indent->core_bools->canonical->allow_nonref;
         $out->spew_raw( $json->encode( $self->generate_meta ) ) && return $out;
     }
 
-    method spew_changes( $release //= 0, $out //= $path->child('Changes') ) {    # See https://metacpan.org/pod/CPAN::Changes::Spec
+    method spew_changes( $release //= 0, $out //= $path->child('Changes.md') ) {
         $out = $path->child($out) unless builtin::blessed $out;
-        my $contents = $out->exists ? $out->slurp_raw : sprintf <<'END', $self->distribution;
-Revision history for %s
+        my $repo = $self->get_repo_url;
+        my $ver  = $self->version;
 
-[Unreleased]
+        # Initialize empty file if missing
+        return $out->spew_utf8(<<~"END") unless $out->exists;
+                # Changelog
 
-    - Initial release
+                All notable changes to this project will be documented in this file.
 
-END
-        $contents =~ s[\[Unreleased\]][$self->version . ' ' . Time::Piece::gmtime->strftime('%Y-%m-%dT%H:%M:%SZ')]meg;
-        $out->spew_raw($contents);
+                The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+                and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+                ## [Unreleased]
+
+                ### Added
+                  - Initial version
+
+                [Unreleased]: $repo/compare/$ver...HEAD
+                [$ver]: $repo/releases/tag/$ver
+                END
+        return unless $release;    # Stop here unless we are finalizing a release
+        my $content = $out->slurp_utf8;
+        my $date    = Time::Piece::gmtime->strftime('%Y-%m-%d');
+
+        # Header Update: Rename [Unreleased] to [Version] - Date
+        # Guard against double-stamping if run multiple times
+        unless ( $content =~ m{^## \[\Q$ver\E\]}m ) {
+            unless ( $content =~ s{^## \[Unreleased\]}{## [$ver] - $date}m ) {
+                $self->log("Warning: Could not find '## [Unreleased]' section in Changes to stamp version $ver");
+
+                # Fallback: Just insert header at top if format is totally broken?
+                # Better to warn and do nothing to avoid mangling.
+                return;
+            }
+        }
+
+        # Extract all versions currently in headers (e.g., ## [1.0.0])
+        my @versions = $content =~ /^## \[(.+?)\]/gm;
+
+        # Strip existing reference links from bottom (anchored by [ref]: url)
+        $content =~ s{^\[.+?\]: http.*(\R|\z)}{}gm;
+        $content =~ s{\s+\z}{\n};                     # Trim trailing whitespace
+        my $links = "";
+
+        # Link for the next cycle (Unreleased)
+        $links .= "[Unreleased]: $repo/compare/$ver...HEAD\n";
+
+        # Link for the current release we just stamped
+        if ( @versions > 1 ) {
+            my $prev = $versions[1];    # $versions[0] is $ver
+            $links .= "[$ver]: $repo/compare/$prev...$ver\n";
+        }
+        else {
+            # First release
+            $links .= "[$ver]: $repo/releases/tag/$ver\n";
+        }
+
+        # Links for older versions found in the file
+        for my $i ( 1 .. $#versions ) {
+            my $v = $versions[$i];
+            my $p = $versions[ $i + 1 ];
+            if ($p) {
+                $links .= "[$v]: $repo/compare/$p...$v\n";
+            }
+            else {
+                $links .= "[$v]: $repo/releases/tag/$v\n";
+            }
+        }
+        $out->spew_utf8( $content . "\n" . $links );
     }
 
     method spew_cpanfile( $out //= $path->child('cpanfile') ) {
@@ -280,19 +405,32 @@ class    #
     method write_file( $filename, $content ) { path($filename)->spew_raw($content) or die "Could not open $filename: $!\n" }
     method read_file ($filename)             { path($filename)->slurp_utf8          or die "Could not open $filename: $!\n" }
 
-    method step_build() {
+   method step_build() {
         for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
             ( my $pm = $pl_file ) =~ s/\.PL$//;
             system $^X, $pl_file->stringify, $pm and die "$pl_file returned $?\n";
         }
+
         my %modules       = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pm$/,  'lib' );
         my %docs          = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pod$/, 'lib' );
         my %scripts       = map { $_ => catfile( 'blib', $_ ) } find( qr/(?:)/,   'script' );
         my %sdocs         = map { $_ => delete $scripts{$_} } grep {/.pod$/} keys %scripts;
+        pm_to_blib( { %modules, %docs, %sdocs }, catdir(qw[blib lib auto]) );
+
+        #
+        mkpath( catdir(qw[blib script]), $verbose );
+        for my $src (keys %scripts) {
+            my $dest = $scripts{$src};
+            my $content = path($src)->slurp_raw;
+            $content =~ s{^#!.*perl.*}{#!$^X};
+            path($dest)->spew_raw($content);
+            make_executable($dest);
+        }
+
+        #
         my %dist_shared   = map { $_ => catfile( qw[blib lib auto share dist],   $meta->name, abs2rel( $_, 'share' ) ) } find( qr/(?:)/, 'share' );
         my %module_shared = map { $_ => catfile( qw[blib lib auto share module], abs2rel( $_, 'module-share' ) ) } find( qr/(?:)/, 'module-share' );
-        pm_to_blib( { %modules, %docs, %scripts, %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
-        make_executable($_) for values %scripts;
+        pm_to_blib( { %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
         mkpath( catdir(qw[blib arch]), $verbose );
         0;
     }
@@ -404,6 +542,8 @@ cover_db/
 *~
 
 !LICENSE
+
+MANIFEST
 
 /_build_params
 
@@ -568,8 +708,9 @@ END
     method spew_tar_gz(
         $verbose //= 0,
         $release //= 0,
-        $trial   //= 0,
-        $out     //= Path::Tiny::path( $self->name . '-' . $self->version . ( $trial ? '-TRIAL' : '' ) . '.tar.gz' )->absolute
+        $out     //= Path::Tiny::path(
+            $self->name . '-' . $self->version . ( $trial ? '-' . Time::Piece::gmtime->strftime('%Y%m%d%H%M%S') . '-TRIAL' : '' ) . '.tar.gz'
+        )->absolute
     ) {
         $out = $path->child($out) unless builtin::blessed $out;
         state $dist;
@@ -579,8 +720,16 @@ END
         my $arch    = Archive::Tar->new;
         my $tar_dir = Path::Tiny->new( $self->name . '-' . $self->version );
 
+        # Determine timestamp for reproducible builds
+        my $mtime = $ENV{SOURCE_DATE_EPOCH};
+        unless ( defined $mtime ) {
+            my ($git_time) = $self->git( 'log', '-1', '--format=%ct' );
+            $mtime = $git_time // time;
+            chomp $mtime;
+        }
+
         # Add files (listing and filtering is now handled in gather_files)
-        $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw ) for $self->gather_files($release);
+        $arch->add_data( $tar_dir->child($_)->stringify, $_->slurp_raw, { mtime => $mtime } ) for $self->gather_files($release);
         $_->mode( $_->mode & ~022 ) for $arch->get_files;
         $arch->write( $out->stringify, Archive::Tar::COMPRESS_GZIP() );
         $out->size ? $dist = $out : ();
@@ -589,7 +738,7 @@ END
     method dist(%args) {
         my $verbose = $args{verbose} // 0;
         my $release = $args{pause}   // 0;
-        my $trial   = $args{trial}   // 0;
+        $trial = $args{trial} // 0;
 
         #~ TODO: $self->run('tidyall', '-a');
         #~ TODO: update version number in Changelog, META.json, etc.
@@ -621,8 +770,9 @@ done_testing;
 
 
         #~ $self->test($verbose);
+        $self->tee( 'tidyall', '-a' );
         $dev_tests->remove_tree( { safe => 0 } );
-        $self->spew_tar_gz( $verbose, $release, $trial );
+        $self->spew_tar_gz( $verbose, $release );
     }
 
     method test(%args) {
@@ -670,13 +820,24 @@ END
 
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
+        $trial = $args{trial} // 0;
         {
             my ( undef, undef, $exit ) = $self->git( 'log', '--head' );
             if ( !$exit ) {
-                say 'Cannot release a dist not backed by a git repo';
+                $self->log('Cannot release a dist not backed by a git repo');
                 return ();
             }
         }
+        $self->check_git_clean();
+        $self->run_hook('before_release');
+        my ($branch) = $self->git( 'symbolic-ref', '--short', 'HEAD' );
+        chomp $branch;
+        $self->log( '=' x 50 );
+        $self->log( 'Previous version: ' . $self->version );
+        $self->log( 'Git branch:       ' . ( $branch eq 'main' ? $branch : "$branch (WARNING: Not main)" ) );
+        $self->log( 'Status:           ' . ( $trial            ? 'Trial' : 'Stable' ) );
+        $self->log('Changes head:');
+        $self->log( '    ' . ( split /\n/, $path->child('Changes.md')->slurp_utf8 )[7] // '???' );
         {    # https://git-scm.com/book/en/v2/Git-Basics-Tagging
             my ( $tag, $stderr, $exit ) = $self->git( 'tag', '-l', $self->version );
             if ( split /\n+/, $tag ) {    # version already tagged in repo
@@ -684,62 +845,84 @@ END
                 !$commits or return ();
                 my ($ver) = reverse sort map { version::parse( 'version', $_ ) } split /\n+/, $taglist;
                 $ver = Version::Next::next_version( $ver->stringify );
-                $self->version( $self->prompt( 'Version [%s]', $ver ) || $ver );
+                $self->version( $self->prompt( 'Version [%s%s]', $ver, $trial ? '-TRIAL' : '' ) || $ver );
             }
         }
-
-        #~ use Data::Dump;
-        #~ ddx \%args;
-        $self->spew_changes;
+        $self->spew_changes(1);
+        $self->tee( 'tidyall', '-a' );
+        $self->git( 'add', 'Changes.md', 'META.json' );
         my $tarball = $self->disttest(%args) // die 'Tests failed!';
+        $tarball // exit $self->log('Failed to build dist!');
         $args{pause} //= ( ( $self->prompt( 'Upload %s to PAUSE? [N]', Path::Tiny::path($tarball)->basename ) // 'N' ) =~ m[y]i );
         if ( $args{pause} ) {
-            $tarball // exit say 'Failed to build dist!';
             $self->pause_dist($tarball);
-        }
-        $self->git_tag unless $args{trial};
+            $self->git_tag unless $trial;
 
-        # Get things ready for next release
-        {
-            my $changes = $path->child('Changes');
-            my $raw     = $changes->slurp_raw;
-            $raw =~ s[^\s*$][\n[Unreleased]\n\n    - \n]m unless $raw =~ m[\n\[Unreleased\]\n];
-            $changes->spew_raw($raw);
-            $self->git( 'add', 'Changes' );
+            # Get things ready for next release
+            {
+                my $changes = $path->child('Changes.md');
+                my $raw     = $changes->slurp_raw;
+                unless ( $raw =~ /## \[Unreleased\]/ ) {
+                    $raw =~ s{^(## \[)}{## [Unreleased]\n\n$1}m;
+                    $changes->spew_utf8($raw);
+                }
+            }
+            $self->run_hook('after_release');
         }
         return 1;
     }
 
     method init(%args) {
+        say "Initializing new distribution...";
 
-        #~ use Data::Dump;
-        #~ ddx \%args;
-        my $pkg = $args{package} // $self->name;
-        my $ver = $args{version} // $self->version // v1.0.0;
+        # Basic Identity
+        my $pkg = $args{package} // $self->prompt("Package Name (e.g. My::Dist)") // die "Package name required";
         $self->name($pkg);
+        my $ver = $args{version} // $self->prompt("Initial Version [v0.0.1]") // 'v0.0.1';
         $self->version($ver);
+        my $desc = $self->prompt("Short Description");
+        $self->abstract($desc) if $desc;
 
-        #~ $path = $path->child( $self->name );
-        $config->{license} //= ['artistic_2'];
-        $self->git( 'init', $path );
-        {
-            $path->child($_)->mkdir for qw[t lib script eg share];
-            $self->spew_package( $self->distribution );
-            $self->spew_meta;
-            $self->spew_changes;
-            $self->spew_cpanfile;
-            $self->spew_license;
-            $self->spew_builder;
-            $self->spew_build_pl;
-            $self->spew_compile_t;
-            $self->spew_gitignore;
-            $self->git( 'add', '.gitignore' );
-            $self->spew_tidyall_rc;
-            #
-            $self->package2path( $self->distribution );    #->touch;
+        # License Selection
+        my $lic = $self->prompt("License (artistic_2, perl_5, mit) [artistic_2]") // 'artistic_2';
+        $config->{license} = [$lic];
+
+        # 3. Features (Populate config for Plugins)
+        my $use_gh = $self->prompt("Generate GitHub Actions CI? [y/N]") // 'n';
+        if ( $use_gh =~ /^y/i ) {
+
+            # Add the plugin to the config so it loads next time
+            push @{ $config->{x_plugins} }, 'GitHubActions';
+
+            # Manually load it now for this run
+            builtin::load_module "App::mii::Plugin::GitHubActions";
+            push @plugins, App::mii::Plugin::GitHubActions->new;
         }
-        $_->touchpath for map { $path->child($_) } qw[t lib script eg share];
+
+        # Scaffolding
+        $self->git( 'init', $path );
+        $path->child($_)->mkdir for qw[t lib script eg share];
+        $self->spew_package( $self->distribution );
+        $self->spew_gitignore;
+        $self->git( 'add', '.gitignore' );
+
+        # Core Files
+        $self->spew_meta;    # Saves x_plugins to META.json
+        $self->spew_changes;
+        $self->spew_cpanfile;
+        $self->spew_license;
+        $self->spew_builder;
+        $self->spew_build_pl;
+        $self->spew_compile_t;
+        $self->spew_tidyall_rc;
+
+        # Trigger Plugin Init
+        $self->trigger('after_init');
+
+        # Finalize
+        $self->gather_files;    # Generates MANIFEST
         $self->git( 'add', '.' );
+        say "Initialized $pkg in $path";
     }
 
     method run( $exe, @args ) {
@@ -784,6 +967,52 @@ END
     sub _list_and (@list) {
         return shift @list if scalar @list == 1;
         join( ', ', @list[ 0 .. -1 ] ) . ' and ' . $list[-1];
+    }
+
+    method run_hook( $phase, @args ) {
+        return unless defined $config->{hooks} && defined $config->{hooks}{$phase};
+        $self->log("Running hook: $phase");
+        my $cmd = $config->{hooks}{$phase};
+        if ( ref $cmd eq 'ARRAY' ) {
+            system( @$cmd, @args ) == 0 or die "Hook $phase failed\n";
+        }
+        else {
+            system( $cmd, @args ) == 0 or die "Hook $phase failed\n";
+        }
+    }
+
+    method load_plugins() {
+        my $list = $config->{x_plugins} // [];
+        for my $entry (@$list) {
+            my $pkg = $entry;
+            $pkg = "App::mii::Plugin::$pkg" unless $pkg =~ s/^\+//;
+            try {
+                builtin::load_module $pkg;
+                push @plugins, $pkg->new();    # Plugins must have a new() constructor
+            }
+            catch ($err) {
+                $self->log( 'Failed to load plugin %s: %s', $pkg, $err );
+            }
+        }
+    }
+
+    # Calls the method named $event on all plugins that support it.
+    # Passes $self (the app) and any args.
+    method trigger( $event, @args ) {
+        for my $plugin (@plugins) {
+            if ( $plugin->can($event) ) {
+                $plugin->$event( $self, @args );
+            }
+        }
+    }
+
+    method check_git_clean() {
+        my ($stat) = $self->git( 'status', '--porcelain' );
+        if ($stat) {
+            $self->log('WARNING before next release: Working directory is dirty.');
+            $self->log($stat);
+            $self->log('I suggest you commit your changes first.');
+        }
     }
 };
 #

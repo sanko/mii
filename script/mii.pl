@@ -31,23 +31,16 @@ for my $arg (@ARGV) {
 my %commands = (
     mint => sub ( $package //= (), $version //= (), @args ) {
         my $mii = App::mii->new();
-        my $pkg = $mii->name    // path('.')->absolute->basename;
-        my $ver = $mii->version // 'v1.0.0';
-        $mii->log('Minting new dist with mii');
-        $package //= $mii->prompt( 'Distribution name   [' . $pkg . ']' ) // $pkg;
-        $version //= $mii->prompt( 'Version number [' . $ver . ']' )      // $ver;
-        $version //= $ver;
-        $package
-            // pod2usage( -message => 'mii: Minting a new distribution requires a package name', -verbose => 99, -sections => ['Commands/mint'] );
 
-        #~ $mii->name($package);
-        #~ $mii->license(@license?@license: ['artistic_2']);
-        #~ $mii->author($author);
-        #~ die $version;
+        #~ my $pkg = $mii->name    // path('.')->absolute->basename;
+        #~ my $ver = $mii->version // 'v1.0.0';
+        #~ $mii->log('Minting new dist with mii');
+        #~ $package //= $mii->prompt( 'Distribution name   [' . $pkg . ']' ) // $pkg;
+        #~ $version //= $mii->prompt( 'Version number [' . $ver . ']' )      // $ver;
+        #~ $version //= $ver;
+        #~ $package
+        #~ // pod2usage( -message => 'mii: Minting a new distribution requires a package name', -verbose => 99, -sections => ['Commands/mint'] );
         $mii->init( name => $package, version => $version );
-
-        #~ $mii->author([$author});
-        die 'I should be generating a META.json here';
 
         #~ App::mii::Mint::Base->new( distribution => $package, author => $author, vcs => $vcs, license => \@license )->mint;
     },

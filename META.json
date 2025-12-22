@@ -108,7 +108,9 @@
       ".github/FUNDING.yml",
       ".github/workflows/ci.yml",
       ".github/workflows/delete_cache.yml",
-      ".gitignore"
+      ".gitignore",
+      ".clang-format",
+      ".github/**"
    ],
    "x_readme_from" : "script/mii.pl"
 }
