@@ -85,6 +85,9 @@
       "App::mii::Markdown" : {
          "file" : "lib/App/mii/Markdown.pm",
          "version" : "v0.0.1"
+      },
+      "App::mii::Plugin::GitHubActions" : {
+         "file" : "lib/App/mii/Plugin/GitHubActions.pm"
       }
    },
    "release_status" : "stable",

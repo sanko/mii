@@ -55,7 +55,7 @@ class App::mii v1.0.0 {
             defined $pkg ? $pkg->new( { holder => _list_and( @{ $self->author } ) } ) :
                 $self->log( 'Software::License has no knowledge of "%s"', $_ ) &&
                 ()
-        } @{ $config->{license} };
+        } @{ $config->{license} // [] };
     }
     #
     method log ( $msg, @etc ) { say @etc ? sprintf $msg, @etc : $msg; }
@@ -108,6 +108,7 @@ class App::mii v1.0.0 {
 
         # Generate artifacts that must exist before we list files
         $self->spew_meta;
+        $self->spew_meta_yml;
         $self->spew_cpanfile;
         $self->spew_license;
         $self->spew_changes($release) if $release;
@@ -200,7 +201,7 @@ class App::mii v1.0.0 {
             ( map { $_ => $config->{$_} } grep {/^x_/i} keys %$config ),
 
             # https://metacpan.org/pod/CPAN::Meta::Spec#REQUIRED-FIELDS
-            abstract       => $self->abstract,
+            abstract       => $self->abstract // 'Unknown',
             author         => $self->author,
             dynamic_config => $config->{dynamic_config} // 1,                                         # lies
             generated_by   => 'App::mii ' . $App::mii::VERSION,
@@ -245,22 +246,34 @@ class App::mii v1.0.0 {
         # Try git config
         try {
             my ($url) = $self->git( 'remote', 'get-url', 'origin' );
-            chomp $url;
+            if ( defined $url ) {
+                chomp $url;
 
-            # Convert git@github.com:User/Repo.git -> https://github.com/User/Repo
-            if ( $url =~ s{^(?:git@|https://)([\w\.]+?)[:/](.+?)(\.git)?$}{https://$1/$2} ) {
-                return $url;
+                # Convert git@github.com:User/Repo.git -> https://github.com/User/Repo
+                if ( $url =~ s{^(?:git@|https://)([\w\.]+?)[:/](.+?)(\.git)?$}{https://$1/$2} ) {
+                    return $url;
+                }
             }
         }
-        catch ($e) { }
-        ...;
-        return 'https://github.com/USER/REPO';    # This should never happen...
+        catch ($e) {
+            $self->log( 'Error determining repo URL: %s', $e );
+        }
+
+        #~ ...;
+        '';    # This should never happen...
     }
 
     method spew_meta ( $out //= $path->child('META.json') ) {    # I could use CPAN::Meta but...
         $out = $path->child($out) unless builtin::blessed $out;
         state $json //= JSON::PP->new->pretty->indent->core_bools->canonical->allow_nonref;
         $out->spew_raw( $json->encode( $self->generate_meta ) ) && return $out;
+    }
+
+    method spew_meta_yml( $out //= $path->child('META.yml') ) {
+        $out = $path->child($out) unless builtin::blessed $out;
+        my $meta = CPAN::Meta->new( $self->generate_meta );
+        $meta->save( $out, { version => 1.4 } );
+        return $out;
     }
 
     method spew_changes( $release //= 0, $out //= $path->child('Changes.md') ) {
@@ -629,8 +642,8 @@ END
         return if $file->exists;
         $file->touchpath;
         my $author      = _list_and( @{ $self->author } );
-        my $abstract    = $self->abstract;
-        my $description = $self->description;
+        my $abstract    = $self->abstract    // '...';
+        my $description = $self->description // '...';
         my $license     = '';
         {
             my @licenses = $self->license;
@@ -739,9 +752,6 @@ END
         my $verbose = $args{verbose} // 0;
         my $release = $args{pause}   // 0;
         $trial = $args{trial} // 0;
-
-        #~ TODO: $self->run('tidyall', '-a');
-        #~ TODO: update version number in Changelog, META.json, etc.
         {
             my $pkg_source;
             if ( defined $config->{x_version_from} ) {
@@ -850,7 +860,7 @@ END
         }
         $self->spew_changes(1);
         $self->tee( 'tidyall', '-a' );
-        $self->git( 'add', 'Changes.md', 'META.json' );
+        $self->git( 'add', 'Changes.md', 'META.json', 'META.yml' );
         my $tarball = $self->disttest(%args) // die 'Tests failed!';
         $tarball // exit $self->log('Failed to build dist!');
         $args{pause} //= ( ( $self->prompt( 'Upload %s to PAUSE? [N]', Path::Tiny::path($tarball)->basename ) // 'N' ) =~ m[y]i );
@@ -873,28 +883,78 @@ END
     }
 
     method init(%args) {
-        say "Initializing new distribution...";
+        $self->log('Initializing new distribution...');
+
+        # Load from existing META.json if available and args are missing
+        if ( defined $config ) {
+            $args{name}    //= $config->{name};
+            $args{version} //= $config->{version};
+
+            # Add other fields as needed
+        }
 
         # Basic Identity
-        my $pkg = $args{package} // $self->prompt("Package Name (e.g. My::Dist)") // die "Package name required";
-        $self->name($pkg);
+        my $pkg = $args{name} // $self->prompt('Package Name (e.g. My::Dist)') // die 'Package name required';
+        $self->log( 'Minting %s', $self->name($pkg) =~ s[-][::]rg );
+
+        # Create subdirectory if we are not already in it
+        # If META.json exists in current path, assume we are re-minting in place.
+        my $target_dir = $self->name;
+        if ( !$path->child('META.json')->exists && $path->basename ne $target_dir ) {
+            $path = $path->child($target_dir);
+            $path->mkdir;
+        }
         my $ver = $args{version} // $self->prompt("Initial Version [v0.0.1]") // 'v0.0.1';
         $self->version($ver);
-        my $desc = $self->prompt("Short Description");
-        $self->abstract($desc) if $desc;
+        my $desc_default = defined $config ? $config->{description} : undef;
+        my $desc         = $args{description} // $self->prompt( "Short Description" . ( $desc_default ? " [$desc_default]" : "" ) ) // $desc_default;
+        $self->abstract($desc)    if $desc;
+        $self->description($desc) if $desc;    # Also set description
 
         # License Selection
-        my $lic = $self->prompt("License (artistic_2, perl_5, mit) [artistic_2]") // 'artistic_2';
+        my $lic_default = defined $config && $config->{license} ? $config->{license}[0] : 'artistic_2';
+        my $lic         = $args{license} // $self->prompt("License (artistic_2, perl_5, mit) [$lic_default]") // $lic_default;
         $config->{license} = [$lic];
 
         # 3. Features (Populate config for Plugins)
-        my $use_gh = $self->prompt("Generate GitHub Actions CI? [y/N]") // 'n';
-        if ( $use_gh =~ /^y/i ) {
+        my $use_gh = $args{github_actions} // $self->prompt("Generate GitHub Actions CI? [y/N]") // 'n';
+        if ( $use_gh =~ /^y/i || $use_gh eq '1' ) {
 
             # Add the plugin to the config so it loads next time
             push @{ $config->{x_plugins} }, 'GitHubActions';
 
-            # Manually load it now for this run
+            # Copy workflows from eg/.github to .github
+            # Assuming 'eg' is in the distribution root where mii is running from?
+            # Or we should look for it relative to where mii.pl is?
+            # For now, let's try to find it relative to INC or just assume we have the content inline or in share.
+            # But the prompt says "workflows I just copied to eg/.github/".
+            # I'll try to locate 'eg/.github' relative to current dir or ../eg if in script.
+            my $eg_github = Path::Tiny::path('eg/.github');
+            if ( !$eg_github->exists ) {
+                $eg_github = Path::Tiny::path('../eg/.github');    # Try parent
+            }
+            if ( $eg_github->exists ) {
+                my $target_github = $path->child('.github');
+                $target_github->mkdir;
+                $eg_github->visit(
+                    sub {
+                        my ( $p, $state ) = @_;
+                        return if $p->is_dir;
+                        my $rel  = $p->relative($eg_github);
+                        my $dest = $target_github->child($rel);
+                        $dest->parent->mkpath;
+                        $p->copy($dest);
+                    },
+                    { recurse => 1 }
+                );
+                $self->log("Copied GitHub Actions workflows from $eg_github");
+            }
+            else {
+                $self->log("Warning: Could not find eg/.github to copy workflows from.");
+            }
+
+# Manually load it now for this run (though we just copied files manually above, maybe we don't need the plugin object active right now if we just did the work?)
+# But keeping consistency
             builtin::load_module "App::mii::Plugin::GitHubActions";
             push @plugins, App::mii::Plugin::GitHubActions->new;
         }
@@ -908,6 +968,7 @@ END
 
         # Core Files
         $self->spew_meta;    # Saves x_plugins to META.json
+        $self->spew_meta_yml;
         $self->spew_changes;
         $self->spew_cpanfile;
         $self->spew_license;
@@ -1016,4 +1077,53 @@ END
     }
 };
 #
-1
+1;
+__END__
+=encoding utf-8
+
+=head1 NAME
+
+App::mii - Minimalist Dist Builder
+
+=head1 SYNOPSIS
+
+    use App::mii;
+    App::mii->new->dist;
+
+=head1 DESCRIPTION
+
+App::mii is a minimalist distribution builder for Perl. It provides methods to initialize, build, test, and release
+Perl distributions.
+
+=head1 METHODS
+
+=head2 init
+
+    $mii->init( name => 'My::Dist', version => 'v0.0.1' );
+
+Initializes a new distribution skeleton in a subdirectory named after the package.
+
+=head2 dist
+
+    $mii->dist( verbose => 1 );
+
+Builds a tarball of the distribution.
+
+=head2 disttest
+
+    $mii->disttest( verbose => 1 );
+
+Builds the distribution and runs tests using cpanm.
+
+=head2 release
+
+    $mii->release( pause => 1 );
+
+Builds, tests, and optionally uploads the distribution to PAUSE.
+
+=head1 AUTHOR
+
+Sanko Robinson E<lt>sanko@cpan.orgE<gt>
+
+=cut
+

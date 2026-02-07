@@ -29,10 +29,13 @@ for my $arg (@ARGV) {
     }
 }
 my %commands = (
-    mint => sub ( $package //= (), $version //= (), @args ) {
-        my $mii = App::mii->new();
+    mint => sub {
+        my $package = shift;
+        my $version = ( @_ % 2 ) ? shift : undef;
+        my %args    = @_;
+        my $mii     = App::mii->new();
+        $package //= $mii->name // path('.')->absolute->basename();
 
-        #~ my $pkg = $mii->name    // path('.')->absolute->basename;
         #~ my $ver = $mii->version // 'v1.0.0';
         #~ $mii->log('Minting new dist with mii');
         #~ $package //= $mii->prompt( 'Distribution name   [' . $pkg . ']' ) // $pkg;
@@ -40,7 +43,7 @@ my %commands = (
         #~ $version //= $ver;
         #~ $package
         #~ // pod2usage( -message => 'mii: Minting a new distribution requires a package name', -verbose => 99, -sections => ['Commands/mint'] );
-        $mii->init( name => $package, version => $version );
+        $mii->init( name => $package, version => $version, %args );
 
         #~ App::mii::Mint::Base->new( distribution => $package, author => $author, vcs => $vcs, license => \@license )->mint;
     },
@@ -61,7 +64,7 @@ my %commands = (
 );
 my $command = shift @args;
 #
-exit !$commands{$command}->(%args) if defined $commands{$command};
+exit !$commands{$command}->( @args, %args ) if defined $commands{$command};
 exit say "Unknown command: $command";
 
 =pod

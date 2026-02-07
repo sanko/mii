@@ -9,5 +9,6 @@ cpanfile
 lib/App/mii.pm
 lib/App/mii.pod
 lib/App/mii/Markdown.pm
+lib/App/mii/Plugin/GitHubActions.pm
 script/mii.pl
 t/00_compile.t

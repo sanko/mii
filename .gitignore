@@ -25,6 +25,7 @@ MANIFEST
 /_build_params
 
 MYMETA.*
+META.yml
 
 /App-mii-*
 
