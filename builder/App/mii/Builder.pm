@@ -23,22 +23,22 @@ class    #
     field $meta : reader = CPAN::Meta->load_file('META.json');
 
     # Params to Build script
-    field $install_base : param  //= '';
-    field $installdirs : param   //= '';
-    field $uninst : param        //= 0;    # Make more sense to have a ./Build uninstall command but...
+    field $install_base  : param //= '';
+    field $installdirs   : param //= '';
+    field $uninst        : param //= 0;    # Make more sense to have a ./Build uninstall command but...
     field $install_paths : param //= ExtUtils::InstallPaths->new( dist_name => $meta->name );
-    field $verbose : param(v)    //= 0;
-    field $dry_run : param       //= 0;
-    field $pureperl : param      //= 0;
-    field $jobs : param          //= 1;
-    field $destdir : param       //= '';
-    field $prefix : param        //= '';
+    field $verbose       : param //= 0;
+    field $dry_run       : param //= 0;
+    field $pureperl      : param //= 0;
+    field $jobs          : param //= 1;
+    field $destdir       : param //= '';
+    field $prefix        : param //= '';
     #
     ADJUST {
         -e 'META.json' or die "No META information provided\n";
     }
-    method write_file( $filename, $content ) { path($filename)->spew_utf8($content) or die "Could not open $filename: $!\n" }
-    method read_file ($filename)             { path($filename)->slurp_utf8          or die "Could not open $filename: $!\n" }
+    method write_file( $filename, $content ) { path($filename)->spew_raw($content) or die "Could not open $filename: $!\n" }
+    method read_file ($filename)             { path($filename)->slurp_utf8         or die "Could not open $filename: $!\n" }
 
     method step_build() {
         for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
@@ -68,12 +68,10 @@ class    #
     method step_test() {
         $self->step_build() unless -d 'blib';
         require TAP::Harness::Env;
-        my %test_args = (
-            ( verbosity => $verbose ),
-            ( jobs  => $jobs ),
-            ( color => -t STDOUT ),
-            lib => [ map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib] ],
-        );
+        require Config;
+        my @libs = map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib];
+        local $ENV{PERL5LIB} = join( $Config::Config{path_sep}, @libs, ( defined $ENV{PERL5LIB} ? $ENV{PERL5LIB} : () ) );
+        my %test_args = ( ( verbosity => $verbose ), ( jobs => $jobs ), ( color => -t STDOUT ), lib => [@libs], );
         TAP::Harness::Env->create( \%test_args )->runtests( sort +find( qr/\.t$/, 't' ) )->has_errors;
     }
 
@@ -95,8 +93,10 @@ class    #
 #!%s
 use lib 'builder';
 use %s;
-%s->new( @ARGV && $ARGV[0] =~ /\A\w+\z/ ? ( action => shift @ARGV ) : (),
-    map { /^--/ ? ( shift(@ARGV) =~ s[^--][]r => 1 ) : /^-/ ? ( shift(@ARGV) =~ s[^-][]r => shift @ARGV ) : () } @ARGV )->Build();
+use Getopt::Long qw[GetOptionsFromArray];
+my %%opts = ( @ARGV && $ARGV[0] =~ /\A\w+\z/ ? ( action => shift @ARGV ) : () );
+GetOptionsFromArray \@ARGV, \%%opts, qw[install_base=s install_path=s%% installdirs=s destdir=s prefix=s config=s%% uninst:1 verbose:1 dry_run:1 jobs=i];
+%s->new(%%opts)->Build();
 
         make_executable('Build');
         my @env = defined $ENV{PERL_MB_OPT} ? split_like_shell( $ENV{PERL_MB_OPT} ) : ();

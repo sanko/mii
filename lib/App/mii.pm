@@ -144,7 +144,25 @@ class App::mii v1.0.0 {
         exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;
         my $provides;
         if ( $stable && $path->child('lib')->children ) {
-            $provides = Module::Metadata->provides( dir => $path->child('lib')->canonpath, version => 2 );
+            my $lib = $path->child('lib');
+            $provides = Module::Metadata->provides( dir => $lib->canonpath, version => 2 );
+
+            # Manually find classes that Module::Metadata might have missed (e.g. with attributes)
+            $lib->visit(
+                sub ( $p, $state ) {
+                    return unless $p->is_file && $p->basename =~ /\.pm$/;
+                    my $content = $p->slurp_utf8;
+                    while ( $content =~ /^[\s\{;]*class\s+([\w:]+)(?:\s+(v?[\d._]+))?.*?[;\{]/mg ) {
+                        my ( $pkg, $ver ) = ( $1, $2 );
+                        if ( !exists $provides->{$pkg} ) {
+                            my $rel = $p->relative($lib)->canonpath;
+                            $rel =~ s[\\+][/]g;
+                            $provides->{$pkg} = { file => 'lib/' . $rel, ( defined $ver ? ( version => $ver ) : () ) };
+                        }
+                    }
+                },
+                { recurse => 1 }
+            );
             $_->{file} =~ s[\\+][/]g for values %$provides;
 
             # Apply no_index filtering
@@ -467,11 +485,14 @@ class    #
     method step_test() {
         $self->step_build() unless -d 'blib';
         require TAP::Harness::Env;
+        require Config;
+        my @libs = map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib];
+        local $ENV{PERL5LIB} = join( $Config::Config{path_sep}, @libs, ( defined $ENV{PERL5LIB} ? $ENV{PERL5LIB} : () ) );
         my %test_args = (
             ( verbosity => $verbose ),
             ( jobs  => $jobs ),
             ( color => -t STDOUT ),
-            lib => [ map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib] ],
+            lib => [ @libs ],
         );
         TAP::Harness::Env->create( \%test_args )->runtests( sort map { $_->stringify } find( qr/\.t$/, 't' ) )->has_errors;
     }
