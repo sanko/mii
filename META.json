@@ -1,5 +1,5 @@
 {
-   "abstract" : "A dist builder for me!",
+   "abstract" : "mii is just for me. mii makes dists the way I'd make dists if I did it by hand.",
    "author" : [
       "Sanko Robinson <sanko@cpan.org>"
    ],
@@ -114,6 +114,9 @@
       ".gitignore",
       ".clang-format",
       ".github/**"
+   ],
+   "x_plugins" : [
+      "GitHubActions"
    ],
    "x_readme_from" : "script/mii.pl"
 }

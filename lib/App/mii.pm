@@ -78,29 +78,13 @@ class App::mii v1.0.0 {
         $path = Path::Tiny::path($path)->absolute unless builtin::blessed $path;
         my $meta = $path->child('META.json');
         if ( $meta->exists ) {
-            $config = CPAN::Meta->load_file($meta);
+            $config = CPAN::Meta->load_file($meta)->as_struct;
             $self->load_plugins();
             $self->trigger('ADJUST');
-
-            #~ $config = decode_json $meta->slurp_utf8;
         }
         else {
-            #~ my $distmeta_struct = {
-            #~ name => $self->distribution,
-            #~ version =>
-            #~ $self->prompt('Version [v1.0.0]') // 'v1.0.0'};
-            #~ use Data::Dump;
-            #~ ddx $distmeta_struct;
-            #~ $config = CPAN::Meta->new($distmeta_struct);
+            $config = {};
         }
-
-        #~ $path = $path->child( $self->name ) if defined $self->name;
-        #~ elsif ( defined $package ) {
-        #~ $self->name($package);
-        #~ }
-        #~ elsif ( $package = $self->prompt('I need a package name or something') ) {
-        #~ $self->name($package) if defined $package;
-        #~ }
     }
 
     method gather_files( $release //= 0 ) {    # And spew MANIFEST
@@ -137,8 +121,6 @@ class App::mii v1.0.0 {
     }
 
     method generate_meta() {
-        state $meta;
-        return $meta if defined $meta;
         my $stable = !$self->version->is_alpha;
         my $status = $trial ? 'testing' : $stable ? 'stable' : 'unstable';
         exit !$self->log( 'No modules found in ' . $path->child('lib') ) unless $path->child('lib')->children;

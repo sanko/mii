@@ -1,7 +1,7 @@
 # Based on Module::Build::Tiny which is copyright (c) 2011 by Leon Timmermans, David Golden.
 # Module::Build::Tiny is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
-use v5.38;
+use v5.40;
 use feature 'class';
 no warnings 'experimental::class';
 class    #
@@ -43,16 +43,26 @@ class    #
     method step_build() {
         for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
             ( my $pm = $pl_file ) =~ s/\.PL$//;
-            system $^X, $pl_file, $pm and die "$pl_file returned $?\n";
+            system $^X, $pl_file->stringify, $pm and die "$pl_file returned $?\n";
         }
-        my %modules       = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pm$/,  'lib' );
-        my %docs          = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pod$/, 'lib' );
-        my %scripts       = map { $_ => catfile( 'blib', $_ ) } find( qr/(?:)/,   'script' );
-        my %sdocs         = map { $_ => delete $scripts{$_} } grep {/.pod$/} keys %scripts;
+        my %modules = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pm$/,  'lib' );
+        my %docs    = map { $_ => catfile( 'blib', $_ ) } find( qr/\.pod$/, 'lib' );
+        my %scripts = map { $_ => catfile( 'blib', $_ ) } find( qr/(?:)/,   'script' );
+        my %sdocs   = map { $_ => delete $scripts{$_} } grep {/.pod$/} keys %scripts;
+        pm_to_blib( { %modules, %docs, %sdocs }, catdir(qw[blib lib auto]) );
+        #
+        mkpath( catdir(qw[blib script]), $verbose );
+        for my $src ( keys %scripts ) {
+            my $dest    = $scripts{$src};
+            my $content = path($src)->slurp_raw;
+            $content =~ s{^#!.*perl.*}{#!$^X};
+            path($dest)->spew_raw($content);
+            make_executable($dest);
+        }
+        #
         my %dist_shared   = map { $_ => catfile( qw[blib lib auto share dist],   $meta->name, abs2rel( $_, 'share' ) ) } find( qr/(?:)/, 'share' );
         my %module_shared = map { $_ => catfile( qw[blib lib auto share module], abs2rel( $_, 'module-share' ) ) } find( qr/(?:)/, 'module-share' );
-        pm_to_blib( { %modules, %docs, %scripts, %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
-        make_executable($_) for values %scripts;
+        pm_to_blib( { %dist_shared, %module_shared }, catdir(qw[blib lib auto]) );
         mkpath( catdir(qw[blib arch]), $verbose );
         0;
     }
@@ -60,7 +70,15 @@ class    #
 
     method step_install() {
         $self->step_build() unless -d 'blib';
-        install( $install_paths->install_map, $verbose, $dry_run, $uninst );
+        install(
+            [   from_to           => $install_paths->install_map,
+                verbose           => $verbose,
+                dry_run           => $dry_run,
+                uninstall_shadows => $uninst,
+                skip              => undef,
+                always_copy       => 1
+            ]
+        );
         0;
     }
     method step_realclean () { rmtree( $_, $verbose ) for qw[blib temp Build _build_params MYMETA.yml MYMETA.json]; 0 }
@@ -72,7 +90,7 @@ class    #
         my @libs = map { rel2abs( catdir( 'blib', $_ ) ) } qw[arch lib];
         local $ENV{PERL5LIB} = join( $Config::Config{path_sep}, @libs, ( defined $ENV{PERL5LIB} ? $ENV{PERL5LIB} : () ) );
         my %test_args = ( ( verbosity => $verbose ), ( jobs => $jobs ), ( color => -t STDOUT ), lib => [@libs], );
-        TAP::Harness::Env->create( \%test_args )->runtests( sort +find( qr/\.t$/, 't' ) )->has_errors;
+        TAP::Harness::Env->create( \%test_args )->runtests( sort map { $_->stringify } find( qr/\.t$/, 't' ) )->has_errors;
     }
 
     method get_arguments (@sources) {
@@ -113,11 +131,17 @@ GetOptionsFromArray \@ARGV, \%%opts, qw[install_base=s install_path=s%% installd
         $meta->save(@$_) for ['MYMETA.json'];
     }
 
-    sub find {
-        my ( $pattern, $dir ) = @_;
-        my @ret;
-        File::Find::find( sub { push @ret, $File::Find::name if /$pattern/ && -f }, $dir ) if -d $dir;
-        return @ret;
+    sub find ( $pattern, $base ) {
+        $base = path($base) unless builtin::blessed $base;
+        my $blah = $base->visit(
+            sub ( $path, $state ) {
+                $state->{$path} = $path if -f $path && $path =~ $pattern;
+
+                #~ return \0 if keys %$state == 10;
+            },
+            { recurse => 1 }
+        );
+        values %$blah;
     }
     };
 1;

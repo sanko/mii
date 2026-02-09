@@ -25,7 +25,6 @@ MANIFEST
 /_build_params
 
 MYMETA.*
-META.yml
 
 /App-mii-*
 
@@ -40,5 +39,3 @@ eg/lib/*.pm
 
 *.session
 
-/lib/App/mii.html
-/lib/App/pod2htmd.tmp

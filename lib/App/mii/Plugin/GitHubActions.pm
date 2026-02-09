@@ -160,8 +160,8 @@ jobs:
               "flags": ["", "-Dusethreads", "-Duselongdouble", "-Dusequadmath"]
             }
         id: matrix
-        run: "jq -rn 'env.DATA | fromjson | @json "matrix=\(.)"' > $GITHUB_OUTPUT
-"
+        run: |
+          jq -rn 'env.DATA | fromjson | @json "matrix=\(.)"' > $GITHUB_OUTPUT
   win32:
     name: 'Windows/v${{matrix.perl}}'
     needs:
