@@ -42,9 +42,16 @@ class App::mii v1.0.0 {
         $config->{version} = builtin::blessed $v ? $v : version::parse( 'version', $v ) if defined $v;
         builtin::blessed $config->{version} ? $config->{version} : version::parse( 'version', $config->{version} );
     }
-    method name ( $v //= () ) { $config->{name} = $v =~ s[::][-]gr if defined $v; $config->{name} }
-    method distribution ()    { $config->{name}      =~ s[-][::]gr }
-    method author ()          { $config->{author} //= [ $self->whoami ] }
+
+    method name ( $v //= () ) {
+        if ( defined $v ) {
+            $v =~ s/\.pm\z//i;
+            $config->{name} = $v =~ s[::][-]gr;
+        }
+        $config->{name};
+    }
+    method distribution () { $config->{name} =~ s[-][::]gr }
+    method author ()       { $config->{author} //= [ $self->whoami ] }
 
     method license ( $v //= () ) {
         if ( defined $v && ref $v eq 'ARRAY' ) {
@@ -802,6 +809,10 @@ done_testing;
     }
 
     method pause_dist( $path, $pause_uri //= 'https://pause.perl.org/pause/authenquery?ACTION=add_uri' ) {
+        if ( $config->{x_private} || $config->{x_no_upload} ) {
+            $self->log('Blocking upload of private distribution.');
+            return ();
+        }
         my $dotpause = defined $config->{x_pause_from} ? Path::Tiny::path( $config->{x_pause_from} ) : Path::Tiny::path( (<~>) )->child('.pause');
         exit say <<'END'unless $dotpause->exists;
 Please set 'x_pause_from' in META.json or create a '.pause' file in your home directory.
@@ -834,6 +845,10 @@ END
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
         $trial = $args{trial} // 0;
+        if ( $config->{x_private} || $config->{x_no_upload} ) {
+            $self->log('Blocking release of private distribution.');
+            return ();
+        }
         {
             my ( undef, undef, $exit ) = $self->git( 'log', '--head' );
             if ( !$exit ) {
@@ -1122,7 +1137,42 @@ Builds the distribution and runs tests using cpanm.
 
     $mii->release( pause => 1 );
 
-Builds, tests, and optionally uploads the distribution to PAUSE.
+Builds, tests, and optionally uploads the distribution to PAUSE. If the C<x_private> variable is set to a true value in
+F<META.json>, this method will refuse to release the distribution.
+
+=head1 CUSTOM METADATA
+
+C<App::mii> supports several custom metadata fields in F<META.json>:
+
+=over
+
+=item x_private
+
+=item x_no_upload
+
+If set to a true value, C<mii> will refuse to upload the distribution to CPAN.
+
+=item x_ignore
+
+An array of glob patterns to ignore when gathering files for the distribution.
+
+=item x_readme_from
+
+The file to use as the source for F<README.md>. Defaults to the main module or pod file.
+
+=item x_version_from
+
+The file to use as the source for the distribution version. Defaults to the main module.
+
+=item x_pause_from
+
+The path to a F<.pause> configuration file. Defaults to F<~/.pause>.
+
+=item x_plugins
+
+An array of plugins to load.
+
+=back
 
 =head1 AUTHOR
 

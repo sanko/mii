@@ -81,6 +81,7 @@ x_ignore:
   - .gitignore
   - .clang-format
   - .github/**
+x_no_upload: 1
 x_plugins:
   - GitHubActions
 x_readme_from: script/mii.pl
