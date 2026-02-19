@@ -41,6 +41,7 @@ class    #
     method read_file ($filename)             { path($filename)->slurp_utf8         or die "Could not open $filename: $!\n" }
 
     method step_build() {
+        rmtree('blib');
         for my $pl_file ( find( qr/\.PL$/, 'lib' ) ) {
             ( my $pm = $pl_file ) =~ s/\.PL$//;
             system $^X, $pl_file->stringify, $pm and die "$pl_file returned $?\n";
