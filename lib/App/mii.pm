@@ -305,7 +305,7 @@ class App::mii v1.0.0 {
                 [Unreleased]: $repo/compare/$ver...HEAD
                 [$ver]: $repo/releases/tag/$ver
                 END
-        return unless $release;    # Stop here unless we are finalizing a release
+        return unless $release && !$trial;    # Stop here unless we are finalizing a release
         my $content = $out->slurp_utf8;
         my $date    = Time::Piece::gmtime->strftime('%Y-%m-%d');
 
@@ -826,6 +826,7 @@ See https://metacpan.org/dist/CPAN-Uploader/view/bin/cpan-upload#CONFIGURATION
 END
         my $pause = CPAN::Upload::Tiny->new_from_config($dotpause);
         $pause // return;
+        $self->log('Uploading...');
         $pause->upload_file($path);
     }
 
@@ -878,7 +879,7 @@ END
         }
         $self->spew_changes(1);
         $self->tee( 'tidyall', '-a' );
-        $self->git( 'add', 'Changes.md', 'META.json', 'META.yml' );
+        $self->git( 'add', ( $trial ? () : 'Changes.md' ), 'META.json', 'META.yml' );
         my $tarball = $self->disttest(%args) // die 'Tests failed!';
         $tarball // exit $self->log('Failed to build dist!');
         $args{pause} //= ( ( $self->prompt( 'Upload %s to PAUSE? [N]', Path::Tiny::path($tarball)->basename ) // 'N' ) =~ m[y]i );
@@ -887,7 +888,7 @@ END
             $self->git_tag unless $trial;
 
             # Get things ready for next release
-            {
+            unless ($trial) {
                 my $changes = $path->child('Changes.md');
                 my $raw     = $changes->slurp_raw;
                 unless ( $raw =~ /## \[Unreleased\]/ ) {
