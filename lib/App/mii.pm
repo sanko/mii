@@ -176,30 +176,22 @@ class App::mii v1.0.0 {
             }
         }
         $_->{file} =~ s[\\+][/]g for values %$provides;
-        my %prereqs = (
-            configure => {
-                requires => {
-                    'CPAN::Meta'             => 0,
-                    Exporter                 => 5.57,
-                    'ExtUtils::Helpers'      => 0.028,
-                    'ExtUtils::Install'      => 0,
-                    'ExtUtils::InstallPaths' => 0.002,
-                    'File::Basename'         => 0,
-                    'File::Find'             => 0,
-                    'File::Path'             => 0,
-                    'File::Spec::Functions'  => 0,
-                    'Getopt::Long'           => 2.36,
-                    'JSON::PP'               => 2,
-                    'Path::Tiny'             => 0,
-                    perl                     => 'v5.40.0'
-                }
-            }
-        );
-        for my $href ( $path->child('cpanfile')->exists ? Module::CPANfile->load->prereq_specs : (), $config->{prereqs} ) {
-            for my ( $stage, $mods )(%$href) {
+        my %prereqs;
+
+        # First merge from cpanfile
+        if ( $path->child('cpanfile')->exists ) {
+            my $cpanfile_href = Module::CPANfile->load( $path->child('cpanfile')->canonpath )->prereq_specs;
+            for my ( $stage, $mods )(%$cpanfile_href) {
                 for my ( $mod, $version )(%$mods) {
                     $prereqs{$stage}{$mod} = $version;
                 }
+            }
+        }
+
+        # Then merge from old config (takes precedence)
+        for my ( $stage, $mods )( %{ $config->{prereqs} // {} } ) {
+            for my ( $mod, $version )(%$mods) {
+                $prereqs{$stage}{$mod} = $version;
             }
         }
         $meta = {
@@ -369,14 +361,26 @@ class App::mii v1.0.0 {
 
     method spew_build_pl( $out //= $path->child('Build.PL') ) {
         $out = $path->child($out) unless builtin::blessed $out;
-        my $dist = $self->distribution;
         $out->touchpath;
-        $out->spew_raw(<<END) && return $out; }
+        my $content;
+        if ( $config->{x_custom_builder} // 1 ) {
+            my $dist = $self->distribution;
+            $content = <<END;
 use v5.40;
 use lib 'builder';
 use ${dist}::Builder;
 ${dist}::Builder->new->Build_PL();
 END
+        }
+        else {
+            $content = <<END;
+use v5.40;
+use Module::Build::Tiny;
+Build_PL();
+END
+        }
+        $out->spew_raw($content) && return $out;
+    }
 
     method spew_builder( $out //= $self->package2path( $self->distribution . '::Builder', 'builder' ) ) {
         $out = $path->child($out) unless builtin::blessed $out;
@@ -935,6 +939,30 @@ END
         my $lic         = $args{license} // $self->prompt("License (artistic_2, perl_5, mit) [$lic_default]") // $lic_default;
         $config->{license} = [$lic];
 
+        # Builder Selection
+        my $cb_default     = defined $config && defined $config->{x_custom_builder} ? ( $config->{x_custom_builder} ? 'y' : 'n' ) : 'n';
+        my $custom_builder = $args{custom_builder} // $self->prompt("Use custom builder? [$cb_default]") // $cb_default;
+        $config->{x_custom_builder} = ( $custom_builder =~ /^y/i || $custom_builder eq '1' ) ? 1 : 0;
+
+        # Set default configure prereqs if missing
+        $config->{prereqs}{configure}{requires} //= $config->{x_custom_builder} ?
+            {
+            'CPAN::Meta'             => 0,
+            Exporter                 => 5.57,
+            'ExtUtils::Helpers'      => 0.028,
+            'ExtUtils::Install'      => 0,
+            'ExtUtils::InstallPaths' => 0.002,
+            'File::Basename'         => 0,
+            'File::Find'             => 0,
+            'File::Path'             => 0,
+            'File::Spec::Functions'  => 0,
+            'Getopt::Long'           => 2.36,
+            'JSON::PP'               => 2,
+            'Path::Tiny'             => 0,
+            perl                     => 'v5.40.0'
+            } :
+            { 'Module::Build::Tiny' => 0.034, perl => 'v5.40.0' };
+
         # 3. Features (Populate config for Plugins)
         my $use_gh = $args{github_actions} // $self->prompt("Generate GitHub Actions CI? [y/N]") // 'n';
         if ( $use_gh =~ /^y/i || $use_gh eq '1' ) {
@@ -986,12 +1014,12 @@ END
         $self->git( 'add', '.gitignore' );
 
         # Core Files
-        $self->spew_meta;    # Saves x_plugins to META.json
+        $self->spew_meta;    # Saves x_plugins and x_custom_builder to META.json
         $self->spew_meta_yml;
         $self->spew_changes;
         $self->spew_cpanfile;
         $self->spew_license;
-        $self->spew_builder;
+        $self->spew_builder if $config->{x_custom_builder};
         $self->spew_build_pl;
         $self->spew_compile_t;
         $self->spew_tidyall_rc;

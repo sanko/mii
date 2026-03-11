@@ -6,7 +6,6 @@ MANIFEST
 META.json
 META.yml
 README.md
-builder/App/mii/Builder.pm
 cpanfile
 lib/App/mii.html
 lib/App/mii.pm
@@ -15,5 +14,5 @@ lib/App/mii/Markdown.pm
 lib/App/mii/Plugin/GitHubActions.pm
 lib/App/pod2htmd.tmp
 script/mii.pl
-t/000_compile.t
 t/00_compile.t
+t/01_private.t

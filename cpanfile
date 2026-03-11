@@ -22,18 +22,8 @@ requires 'perl',    '5.038';
 requires 'version', '0.77';
 recommends 'Test::Spellunker';
 on configure => sub {
-    requires 'CPAN::Meta';
-    requires 'Exporter',          '5.57';
-    requires 'ExtUtils::Helpers', '0.028';
-    requires 'ExtUtils::Install';
-    requires 'ExtUtils::InstallPaths', '0.002';
-    requires 'File::Basename';
-    requires 'File::Find';
-    requires 'File::Path';
-    requires 'File::Spec::Functions';
-    requires 'JSON::PP', '2';
-    requires 'Path::Tiny';
-    requires 'perl', 'v5.38.0';
+    requires 'Module::Build::Tiny', '0.034';
+    requires 'perl',                'v5.40.0';
 };
 on test => sub {
     requires 'Capture::Tiny';
