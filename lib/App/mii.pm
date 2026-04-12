@@ -765,7 +765,7 @@ END
     method dist(%args) {
         my $verbose = $args{verbose} // 0;
         my $release = $args{pause}   // 0;
-        $trial = $args{trial} // 0;
+        $trial = defined $args{trial} ? $args{trial} : ( $self->is_main_branch ? 0 : 1 );
         {
             my $pkg_source;
             if ( defined $config->{x_version_from} ) {
@@ -849,7 +849,7 @@ END
 
     method release(%args) {
         $self->version( $args{version} ) if defined $args{version};
-        $trial = $args{trial} // 0;
+        $trial = defined $args{trial} ? $args{trial} : ( $self->is_main_branch ? 0 : 1 );
         if ( $config->{x_private} || $config->{x_no_upload} ) {
             $self->log('Blocking release of private distribution.');
             return ();
@@ -863,8 +863,7 @@ END
         }
         $self->check_git_clean();
         $self->run_hook('before_release');
-        my ($branch) = $self->git( 'symbolic-ref', '--short', 'HEAD' );
-        chomp $branch;
+        my $branch = $self->branch;
         $self->log( '=' x 50 );
         $self->log( 'Previous version: ' . $self->version );
         $self->log( 'Git branch:       ' . ( $branch eq 'main' ? $branch : "$branch (WARNING: Not main)" ) );
@@ -1046,6 +1045,13 @@ END
     method git(@args) {
         $self->run( 'git', @args );
     }
+
+    method branch() {
+        my ($branch) = $self->git( 'symbolic-ref', '--short', 'HEAD' );
+        chomp $branch if defined $branch;
+        $branch;
+    }
+    method is_main_branch() { ( $self->branch // '' ) eq 'main' }
 
     method whoami() {
         my ($me) = $self->git(qw[config user.name]);
